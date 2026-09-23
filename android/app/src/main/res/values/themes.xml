@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <style name="Theme.ElYaomy" parent="Theme.AppCompat.Light.NoActionBar">
+        <item name="colorPrimary">@color/el_yaomy_primary</item>
+        <item name="colorPrimaryDark">@color/el_yaomy_primary_dark</item>
+        <item name="colorAccent">@color/el_yaomy_accent</item>
+        <item name="android:colorBackground">@color/el_yaomy_background</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowFullscreen">false</item>
+    </style>
+</resources>

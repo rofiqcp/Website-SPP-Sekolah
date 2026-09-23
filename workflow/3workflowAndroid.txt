@@ -1,0 +1,1477 @@
+Bisa dibuat **tanpa program tambahan di PC client**, tapi harus dipilih jalur hardware yang benar. Catatan pentingnya:
+
+1. **Web biasa tidak bisa diam-diam membaca semua port USB tanpa izin.**
+2. Untuk reader RFID mode **keyboard/HID**, web bisa langsung membaca seperti input keyboard.
+3. Untuk reader/writer RFID mode **serial/COM port**, web bisa pakai **Web Serial API** di Chrome/Edge desktop.
+4. Untuk reader/writer tipe **PC/SC seperti sebagian NFC reader**, biasanya web tidak bisa akses langsung tanpa bridge/native app.
+5. Jadi kalau targetnya “tinggal login dari web, tidak instal apa-apa”, maka dari awal harus beli RFID reader/writer yang cocok.
+
+Web Serial memang memungkinkan website berkomunikasi dengan perangkat serial melalui JavaScript, termasuk USB/Bluetooth yang meniru serial port, tetapi fiturnya terbatas pada browser tertentu dan wajib secure context/HTTPS. ([Chrome for Developers][1]) Browser juga mewajibkan user gesture untuk memilih port pertama kali; setelah izin diberikan, web bisa memakai daftar port yang sebelumnya sudah diizinkan dengan `navigator.serial.getPorts()`. ([Chrome for Developers][1])
+
+---
+
+# 1. Keputusan Desain yang Saya Sarankan
+
+Untuk El Yaomy, gunakan **3 mode RFID**.
+
+## Mode A — RFID Reader Keyboard / HID
+
+Ini paling mudah untuk kantin.
+
+```text
+RFID reader USB dicolok ke PC
+Reader bertindak seperti keyboard
+Saat kartu ditempel, UID diketik otomatis ke input web
+Web langsung proses pembayaran
+Tidak perlu port
+Tidak perlu Web Serial
+Tidak perlu aplikasi tambahan
+```
+
+Kelebihan:
+
+```text
+- Paling mudah
+- Sangat stabil
+- Bisa dipakai di Chrome, Edge, Firefox
+- Cocok untuk kasir kantin
+- Tidak perlu izin port browser
+```
+
+Kekurangan:
+
+```text
+- Umumnya hanya read UID
+- Tidak cocok untuk tulis data ke kartu
+- Keamanan tergantung server, limit, dan audit
+```
+
+Rekomendasi penggunaan:
+
+```text
+Kantin harian
+Cek saldo siswa
+Pembayaran cepat
+Top-up sederhana
+Scan kartu siswa
+```
+
+---
+
+## Mode B — RFID Reader/Writer Serial via Web Serial
+
+Ini untuk fitur reader/writer yang benar-benar ingin diakses dari web.
+
+```text
+RFID reader/writer USB mendukung virtual COM port
+Web pakai Web Serial API
+User login
+Klik "Hubungkan Reader"
+Browser minta izin port pertama kali
+Setelah itu web bisa auto-connect port yang sudah pernah diizinkan
+```
+
+Kelebihan:
+
+```text
+- Tetap tanpa aplikasi tambahan
+- Bisa baca dan tulis jika reader punya command serial
+- Bisa deteksi vendor/product ID tertentu
+- Cocok untuk admin kartu
+```
+
+Kekurangan:
+
+```text
+- Harus Chrome/Edge desktop
+- Harus HTTPS atau localhost
+- User tetap harus memberi izin port pertama kali
+- Tidak semua reader RFID cocok
+```
+
+Rekomendasi penggunaan:
+
+```text
+Penerbitan kartu
+Cek kartu
+Aktivasi kartu
+Blokir/ganti kartu
+Tulis token jika hardware mendukung
+```
+
+---
+
+## Mode C — Native Bridge
+
+Ini **jangan dipakai dulu** kalau ingin sederhana.
+
+```text
+RFID reader PC/SC
+Aplikasi kecil lokal membaca kartu
+Web menerima data dari aplikasi lokal
+```
+
+Kelebihan:
+
+```text
+- Kompatibel dengan banyak reader profesional
+- Lebih kuat untuk DESFire/security card
+```
+
+Kekurangan:
+
+```text
+- Harus instal program tambahan
+- Tidak sesuai keinginan Anda saat ini
+```
+
+Kesimpulan saya:
+
+```text
+Untuk MVP:
+- Kantin pakai RFID keyboard/HID.
+- Admin kartu pakai Web Serial reader/writer jika butuh tulis kartu.
+- Saldo tetap di server, bukan di kartu.
+```
+
+---
+
+# 2. Cara Supaya “Tinggal Login” dari Web
+
+Flow ideal di PC client:
+
+```text
+1. Petugas buka web sekolah.otomasi.app
+2. Login sebagai kasir/admin/guru
+3. Sistem membaca role user
+4. Sistem membaca terminal/browser yang sedang dipakai
+5. Sistem mencoba auto-connect reader:
+   - jika mode HID: langsung fokus ke input scan
+   - jika mode Serial: cek port yang pernah diizinkan
+6. Jika belum pernah izin port, tampil tombol "Hubungkan Reader"
+7. Setelah reader aktif, user langsung bisa transaksi
+```
+
+Catatan penting:
+
+```text
+Auto-detect penuh hanya bisa untuk reader yang sudah pernah diberi izin.
+Untuk reader serial baru, browser tetap meminta user memilih port.
+Itu aturan keamanan browser, tidak bisa dilewati.
+```
+
+---
+
+# 3. Rekomendasi Hardware RFID
+
+## Untuk kasir kantin
+
+Gunakan:
+
+```text
+RFID USB 13.56 MHz
+Mode keyboard / HID
+Output UID + Enter
+Bisa setting prefix/suffix
+Tidak perlu driver tambahan
+```
+
+Setting reader:
+
+```text
+Output format : HEX uppercase
+Suffix        : Enter
+Prefix        : kosong atau "RFID:"
+Debounce      : 1-2 detik
+```
+
+Contoh output:
+
+```text
+04A1B2C3D4
+```
+
+atau:
+
+```text
+RFID:04A1B2C3D4
+```
+
+## Untuk admin kartu / writer
+
+Gunakan reader/writer yang:
+
+```text
+Mendukung virtual COM port
+Punya dokumentasi command serial
+Bisa baca UID
+Bisa tulis block/sector/token bila dibutuhkan
+Kompatibel Chrome Web Serial
+```
+
+Hindari untuk web-only:
+
+```text
+Reader yang hanya PC/SC tanpa mode serial
+Reader yang butuh aplikasi vendor
+Reader yang butuh driver khusus berat
+Reader yang command protocol-nya tertutup
+```
+
+---
+
+# 4. Desain PC Client Web
+
+## Komponen di browser
+
+```text
+RFID Manager
+- detect mode
+- HID keyboard scan listener
+- Web Serial connector
+- auto reconnect previous serial port
+- parser UID
+- anti double scan
+- send scan to backend
+
+POS Kantin
+- cart
+- scan siswa
+- cek saldo
+- checkout
+- print struk
+
+Top-up
+- scan siswa
+- input nominal
+- role limit
+- konfirmasi
+- simpan transaksi
+```
+
+## Browser yang direkomendasikan
+
+```text
+Chrome Desktop
+Microsoft Edge Desktop
+```
+
+Karena Web Serial diluncurkan di Chrome dan memungkinkan website membaca/menulis serial device melalui JavaScript. ([Chrome for Developers][1])
+
+---
+
+# 5. Pseudocode Web RFID Manager
+
+## Deteksi kemampuan browser
+
+```text
+FUNCTION detect_rfid_capability():
+    capabilities = {}
+
+    IF "serial" exists in navigator:
+        capabilities.web_serial = true
+    ELSE:
+        capabilities.web_serial = false
+
+    capabilities.keyboard_hid = true
+
+    RETURN capabilities
+```
+
+---
+
+## Init RFID setelah user login
+
+```text
+FUNCTION init_rfid_after_login(user):
+    role = user.role
+
+    IF role in ["canteen_cashier", "school_cashier", "admin", "teacher"]:
+        start_keyboard_rfid_listener()
+
+    IF browser_supports_web_serial():
+        try_auto_connect_previous_serial_reader()
+
+    show_reader_status()
+```
+
+---
+
+## Mode RFID Keyboard / HID
+
+Ini paling mudah dan sangat cocok untuk kantin.
+
+```text
+FUNCTION start_keyboard_rfid_listener():
+    create_hidden_input("rfid_input")
+    focus("rfid_input")
+
+    ON input keydown:
+        collect characters into buffer
+
+        IF key == "Enter":
+            raw_uid = buffer.trim()
+            buffer = ""
+
+            IF is_valid_rfid(raw_uid):
+                handle_card_scanned(raw_uid)
+```
+
+Anti double scan:
+
+```text
+FUNCTION handle_card_scanned(raw_uid):
+    normalized_uid = normalize_uid(raw_uid)
+
+    IF same_uid_scanned_within_2_seconds(normalized_uid):
+        IGNORE
+
+    current_context = get_current_page_context()
+
+    IF current_context == "canteen_pos":
+        process_canteen_card(normalized_uid)
+
+    IF current_context == "topup":
+        process_topup_card(normalized_uid)
+
+    IF current_context == "card_management":
+        process_card_management_scan(normalized_uid)
+```
+
+---
+
+## Mode Web Serial Auto Connect
+
+Pertama kali user tetap perlu klik “Hubungkan Reader”.
+
+```text
+FUNCTION connect_serial_reader_first_time():
+    REQUIRE user clicks button
+
+    IF "serial" not in navigator:
+        show_error("Browser tidak mendukung Web Serial")
+        RETURN
+
+    port = navigator.serial.requestPort({
+        filters: [
+            { usbVendorId: RFID_VENDOR_ID_OPTIONAL }
+        ]
+    })
+
+    open_serial_port(port)
+    save_reader_mode("serial")
+```
+
+Auto connect berikutnya:
+
+```text
+FUNCTION try_auto_connect_previous_serial_reader():
+    ports = navigator.serial.getPorts()
+
+    IF ports.length == 0:
+        show_status("Reader serial belum dihubungkan")
+        RETURN
+
+    FOR port IN ports:
+        TRY:
+            open_serial_port(port)
+            show_status("Reader serial aktif")
+            RETURN
+        CATCH:
+            continue
+
+    show_status("Reader serial gagal auto-connect")
+```
+
+Chrome menjelaskan bahwa `requestPort()` memunculkan pilihan perangkat, sedangkan `getPorts()` mengambil port yang sebelumnya sudah diberi akses oleh user. ([Chrome for Developers][1])
+
+---
+
+## Open port serial
+
+```text
+FUNCTION open_serial_port(port):
+    port.open({
+        baudRate: 9600,
+        dataBits: 8,
+        stopBits: 1,
+        parity: "none",
+        flowControl: "none"
+    })
+
+    reader = port.readable.getReader()
+
+    WHILE port is open:
+        data = reader.read()
+        text = decode_serial_bytes(data.value)
+
+        append text to serial_buffer
+
+        IF serial_buffer contains complete RFID frame:
+            raw_uid = parse_uid(serial_buffer)
+            serial_buffer = ""
+
+            handle_card_scanned(raw_uid)
+```
+
+---
+
+## Pseudocode tulis kartu via Web Serial
+
+Hanya bisa jika reader/writer menyediakan command serial.
+
+```text
+FUNCTION write_card_token_via_serial(card_token):
+    IF serial_port_not_connected:
+        REJECT "Reader writer belum aktif"
+
+    command = build_write_command(card_token)
+
+    checksum = calculate_checksum(command)
+
+    frame = command + checksum
+
+    serial_writer.write(frame)
+
+    response = wait_serial_response(timeout = 3000)
+
+    IF response.status == "OK":
+        RETURN success
+    ELSE:
+        REJECT "Gagal menulis kartu"
+```
+
+Catatan saya: untuk keamanan, **tidak wajib menulis saldo ke kartu**. Bahkan lebih aman kalau kartu hanya dipakai sebagai identitas. Jika ingin menulis token, tulis token acak, bukan saldo.
+
+---
+
+# 6. Backend API untuk RFID Web
+
+## Endpoint scan kartu
+
+```text
+POST /api/rfid/scan
+```
+
+Payload:
+
+```text
+{
+  "raw_uid": "04A1B2C3D4",
+  "mode": "hid_keyboard",
+  "terminal_id": "terminal-kantin-01",
+  "context": "canteen_pos"
+}
+```
+
+Backend:
+
+```text
+FUNCTION rfid_scan(request):
+    user = authenticate(request)
+
+    validate_terminal(request.terminal_id, user)
+
+    uid_hash = hmac_sha256(SERVER_SECRET, normalize_uid(request.raw_uid))
+
+    card = find_card_by_uid_hash(uid_hash)
+
+    IF card not found:
+        RETURN {
+            status: "unknown_card"
+        }
+
+    IF card.status != "active":
+        RETURN {
+            status: "blocked_card",
+            reason: card.blocked_reason
+        }
+
+    student = get_student(card.student_id)
+    wallet = get_wallet(student.id)
+
+    authorize(user, "rfid.scan", student)
+
+    log_card_event(card, user, terminal)
+
+    RETURN {
+        status: "active",
+        student: {
+            id,
+            name,
+            class_name,
+            photo_url
+        },
+        wallet: {
+            balance,
+            daily_limit,
+            today_spent
+        }
+    }
+```
+
+---
+
+# 7. Terminal Web Tanpa Program Tambahan
+
+Karena tidak ada aplikasi lokal, kita tetap perlu mengenali PC client. Caranya:
+
+```text
+Terminal Enrollment berbasis browser
+```
+
+## Alur register terminal
+
+```text
+1. Super admin login di PC client
+2. Buka menu Terminal
+3. Klik "Daftarkan PC ini"
+4. Pilih lokasi:
+   - Kantin 1
+   - Admin TU
+   - Kasir Sekolah
+5. Browser membuat private key non-extractable via Web Crypto
+6. Public key dikirim ke server
+7. Server menyimpan terminal_id + public_key
+8. Terminal aktif
+```
+
+Pseudocode:
+
+```text
+FUNCTION enroll_terminal(admin, terminal_name, location, allowed_modules):
+    authorize(admin, "terminal.enroll")
+
+    keypair = crypto.subtle.generateKey(
+        algorithm = ECDSA_P256,
+        extractable = false,
+        usages = ["sign", "verify"]
+    )
+
+    public_key = export_public_key(keypair.publicKey)
+
+    save_private_key_to_indexeddb(keypair.privateKey)
+
+    response = POST /api/terminals/enroll {
+        terminal_name,
+        location,
+        allowed_modules,
+        public_key
+    }
+
+    save_terminal_id_to_indexeddb(response.terminal_id)
+```
+
+## Saat transaksi
+
+```text
+FUNCTION send_secure_terminal_request(payload):
+    terminal_id = get_terminal_id_from_indexeddb()
+    private_key = get_private_key_from_indexeddb()
+
+    nonce = get_nonce_from_server()
+
+    signature = sign(private_key, hash(payload + nonce))
+
+    POST API with:
+        X-Terminal-Id
+        X-Terminal-Signature
+        X-Terminal-Nonce
+```
+
+Backend:
+
+```text
+FUNCTION verify_terminal_request(request):
+    terminal = get_terminal(request.terminal_id)
+
+    IF terminal.status != "active":
+        REJECT
+
+    IF terminal.allowed_modules does not contain request.module:
+        REJECT
+
+    verify_signature(
+        public_key = terminal.public_key,
+        payload_hash = hash(request.body + request.nonce),
+        signature = request.signature
+    )
+
+    IF signature invalid:
+        REJECT
+```
+
+Ini lebih aman daripada hanya menyimpan token biasa di browser.
+
+---
+
+# 8. Database Tambahan untuk Terminal Web
+
+```text
+web_terminals
+- id uuid pk
+- unit_id uuid
+- terminal_code text unique
+- terminal_name text
+- location_name text
+- allowed_modules text[]
+- public_key text
+- status text
+  active, blocked, retired
+- enrolled_by uuid
+- enrolled_at timestamp
+- last_seen_at timestamp
+- last_ip text
+- user_agent text
+```
+
+```text
+terminal_sessions
+- id uuid pk
+- terminal_id uuid
+- user_id uuid
+- login_at timestamp
+- logout_at timestamp nullable
+- ip_address text
+- user_agent text
+- status text
+```
+
+```text
+terminal_security_events
+- id uuid pk
+- terminal_id uuid
+- user_id uuid nullable
+- event_type text
+- severity text
+- description text
+- created_at timestamp
+```
+
+---
+
+# 9. Security Web RFID
+
+## Wajib
+
+```text
+HTTPS wajib
+HSTS aktif
+Cookie HttpOnly + Secure + SameSite
+CSRF protection
+RBAC + object-level authorization
+Terminal enrollment
+Terminal allowed module
+Rate limit scan
+Anti double scan
+Audit log
+Idempotency key
+Wallet row lock
+Tidak simpan saldo di kartu
+Tidak simpan saldo di browser
+Tidak izinkan transaksi jika server offline
+```
+
+## Header keamanan
+
+```text
+Content-Security-Policy:
+  default-src 'self';
+  script-src 'self';
+  connect-src 'self';
+  img-src 'self' data:;
+  style-src 'self' 'unsafe-inline';
+  frame-ancestors 'none';
+
+Strict-Transport-Security:
+  max-age=31536000; includeSubDomains; preload
+
+X-Content-Type-Options:
+  nosniff
+
+Referrer-Policy:
+  strict-origin-when-cross-origin
+
+Permissions-Policy:
+  camera=(), microphone=(), geolocation=(), usb=(self), serial=(self)
+```
+
+MDN mencatat Web Serial hanya tersedia di secure context/HTTPS dan bisa dikontrol melalui Permissions Policy. ([MDN Web Docs][2])
+
+---
+
+# 10. Android WebView untuk User HP
+
+Untuk orang tua, siswa, guru, dan kepala sekolah, aplikasi Android cukup dibuat **WebView** yang membuka domain:
+
+```text
+https://sekolah.otomasi.app
+```
+
+Android WebView memang dipakai untuk menampilkan web page di dalam aplikasi Android, dan Android Developers menjelaskan WebView dapat memuat halaman web online melalui `loadUrl()`. ([Android Developers][3]) JavaScript di WebView default-nya mati dan harus diaktifkan jika web app membutuhkan JavaScript. ([Android Developers][3])
+
+## Role di HP
+
+```text
+Orang tua:
+- lihat tagihan
+- bayar online
+- lihat saldo anak
+- lihat riwayat kantin
+- atur limit jajan
+- blokir kartu hilang
+
+Siswa:
+- lihat saldo
+- lihat QR/ID
+- riwayat transaksi
+- notifikasi
+
+Guru:
+- lihat kelas
+- top-up jika diizinkan
+- lihat laporan siswa kelas
+- approval kecil jika diberi hak
+
+Kepala sekolah:
+- dashboard
+- approval
+- laporan
+
+Bendahara:
+- laporan
+- approval
+- monitoring transaksi
+```
+
+---
+
+# 11. Android Manifest Pseudocode
+
+```xml
+<manifest package="app.otomasi.sekolah">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <application
+        android:usesCleartextTraffic="false"
+        android:allowBackup="false"
+        android:label="El Yaomy"
+        android:theme="@style/AppTheme">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+        </activity>
+
+    </application>
+
+</manifest>
+```
+
+Android Developers juga menjelaskan aplikasi harus meminta permission `INTERNET` untuk memuat konten web dari internet. ([Android Developers][3])
+
+---
+
+# 12. MainActivity Kotlin Pseudocode
+
+```kotlin
+class MainActivity : AppCompatActivity() {
+
+    private lateinit var webView: WebView
+    private val appUrl = "https://sekolah.otomasi.app"
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        webView = WebView(this)
+        setContentView(webView)
+
+        configureWebView()
+        configureNavigation()
+        configureDownload()
+
+        webView.loadUrl(appUrl)
+    }
+
+    private fun configureWebView() {
+        val settings = webView.settings
+
+        settings.javaScriptEnabled = true
+        settings.domStorageEnabled = true
+        settings.databaseEnabled = true
+
+        settings.allowFileAccess = false
+        settings.allowContentAccess = false
+
+        settings.setSupportZoom(false)
+        settings.builtInZoomControls = false
+        settings.displayZoomControls = false
+
+        settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+
+        WebView.setWebContentsDebuggingEnabled(false)
+
+        CookieManager.getInstance().setAcceptCookie(true)
+        CookieManager.getInstance().setAcceptThirdPartyCookies(webView, false)
+    }
+
+    private fun configureNavigation() {
+        webView.webViewClient = object : WebViewClient() {
+
+            override fun shouldOverrideUrlLoading(
+                view: WebView,
+                request: WebResourceRequest
+            ): Boolean {
+                val url = request.url.toString()
+                val host = request.url.host ?: ""
+
+                return if (host == "sekolah.otomasi.app") {
+                    false
+                } else {
+                    openExternalBrowser(url)
+                    true
+                }
+            }
+
+            override fun onReceivedSslError(
+                view: WebView,
+                handler: SslErrorHandler,
+                error: SslError
+            ) {
+                handler.cancel()
+                showError("Koneksi tidak aman. Aplikasi diblokir.")
+            }
+        }
+
+        webView.webChromeClient = object : WebChromeClient() {
+            override fun onPermissionRequest(request: PermissionRequest) {
+                request.deny()
+            }
+        }
+    }
+
+    private fun configureDownload() {
+        webView.setDownloadListener { url, userAgent, contentDisposition, mimeType, contentLength ->
+
+            if (!url.startsWith("https://sekolah.otomasi.app")) {
+                showError("Download dari domain lain diblokir")
+                return@setDownloadListener
+            }
+
+            val request = DownloadManager.Request(Uri.parse(url))
+            request.setTitle(resolveFileName(contentDisposition, url))
+            request.setMimeType(mimeType)
+            request.addRequestHeader("User-Agent", userAgent)
+            request.setNotificationVisibility(
+                DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED
+            )
+            request.setDestinationInExternalPublicDir(
+                Environment.DIRECTORY_DOWNLOADS,
+                resolveFileName(contentDisposition, url)
+            )
+
+            val manager = getSystemService(DOWNLOAD_SERVICE) as DownloadManager
+            manager.enqueue(request)
+        }
+    }
+
+    override fun onBackPressed() {
+        if (webView.canGoBack()) {
+            webView.goBack()
+        } else {
+            super.onBackPressed()
+        }
+    }
+
+    private fun openExternalBrowser(url: String) {
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+        startActivity(intent)
+    }
+}
+```
+
+---
+
+# 13. Jangan Sembarangan Pakai JavaScript Interface
+
+Untuk WebView HP, sebaiknya **tidak perlu `addJavascriptInterface()`** dulu.
+
+Kenapa?
+
+Android Developers memperingatkan bahwa `addJavascriptInterface()` memungkinkan JavaScript mengontrol bagian aplikasi Android dan bisa menjadi isu keamanan jika HTML/JavaScript tidak sepenuhnya terpercaya. ([Android Developers][3])
+
+Jadi untuk versi awal:
+
+```text
+Tidak perlu JavaScript bridge
+Tidak perlu akses native Android
+Cukup WebView aman
+Semua fitur dari website
+```
+
+Kalau nanti butuh push notification, kamera, atau file khusus, baru dibuat bridge terbatas.
+
+---
+
+# 14. Fitur Web agar Nyaman di HP
+
+Frontend web harus responsive.
+
+## Layout mobile
+
+```text
+Bottom navigation:
+- Beranda
+- Tagihan
+- Saldo
+- Riwayat
+- Profil
+```
+
+## Halaman orang tua
+
+```text
+Dashboard anak
+Tagihan aktif
+Tombol bayar
+Saldo dompet
+Riwayat kantin
+Limit jajan
+Blokir kartu
+Notifikasi
+```
+
+## Halaman siswa
+
+```text
+Saldo
+Riwayat transaksi
+Status kartu
+Limit harian
+QR identitas opsional
+```
+
+## Halaman guru
+
+```text
+Kelas saya
+Daftar siswa
+Top-up siswa jika diizinkan
+Riwayat top-up saya
+Tunggakan kelas
+```
+
+---
+
+# 15. Download Aplikasi dari Website
+
+Buat halaman:
+
+```text
+https://sekolah.otomasi.app/download
+```
+
+Isi halaman:
+
+```text
+Download Aplikasi El Yaomy
+- Download Android APK
+- Versi terbaru
+- Tanggal update
+- Ukuran file
+- SHA-256 checksum
+- Changelog
+- Panduan instalasi
+```
+
+## Struktur file di server
+
+```text
+/public/downloads/el-yaomy-latest.apk
+/public/downloads/el-yaomy-1.0.0.apk
+/public/downloads/el-yaomy-1.0.1.apk
+```
+
+## Endpoint versi aplikasi
+
+```text
+GET /api/mobile-app/latest
+```
+
+Response:
+
+```json
+{
+  "platform": "android",
+  "version_code": 12,
+  "version_name": "1.0.12",
+  "apk_url": "https://sekolah.otomasi.app/downloads/el-yaomy-1.0.12.apk",
+  "sha256": "HASH_FILE_APK",
+  "force_update": false,
+  "min_supported_version_code": 10,
+  "changelog": [
+    "Perbaikan login",
+    "Tambah riwayat kantin",
+    "Optimasi tampilan HP"
+  ]
+}
+```
+
+## Pseudocode halaman download
+
+```text
+FUNCTION render_download_page():
+    app = GET /api/mobile-app/latest
+
+    show app.version_name
+    show app.changelog
+    show app.sha256
+    show button "Download APK"
+
+    ON click download:
+        redirect to app.apk_url
+```
+
+---
+
+# 16. Pseudocode Cek Update di Android WebView
+
+Saat app dibuka:
+
+```kotlin
+FUNCTION checkAppUpdate():
+    latest = httpGet("https://sekolah.otomasi.app/api/mobile-app/latest")
+
+    currentVersionCode = BuildConfig.VERSION_CODE
+
+    IF latest.min_supported_version_code > currentVersionCode:
+        showForceUpdateDialog(latest.apk_url)
+
+    ELSE IF latest.version_code > currentVersionCode:
+        showOptionalUpdateDialog(latest.apk_url)
+
+    ELSE:
+        continue
+```
+
+Dialog:
+
+```kotlin
+FUNCTION showOptionalUpdateDialog(apkUrl):
+    show dialog:
+        title = "Update tersedia"
+        message = "Versi baru aplikasi tersedia."
+        positive = "Download"
+        negative = "Nanti"
+
+    IF positive clicked:
+        openExternalBrowser(apkUrl)
+```
+
+Untuk instalasi APK dari website, user biasanya perlu mengizinkan instalasi dari sumber yang dipilih di pengaturan Android. Lebih aman jika tombol download membuka browser eksternal atau Download Manager, bukan mencoba instal diam-diam.
+
+---
+
+# 17. Alternatif Lebih Mudah: PWA
+
+Selain APK WebView, website juga bisa dibuat **PWA**.
+
+Kelebihan:
+
+```text
+- User buka website
+- Klik Install App
+- Tidak perlu download APK
+- Update otomatis mengikuti website
+- Cocok untuk orang tua/siswa
+```
+
+Tetap sediakan APK WebView untuk user yang ingin “aplikasi sekolah”.
+
+Strategi terbaik:
+
+```text
+1. Website responsive sebagai sumber utama
+2. PWA installable
+3. APK WebView sebagai wrapper resmi
+4. Halaman download menyediakan APK
+```
+
+---
+
+# 18. Backend untuk Download APK
+
+## Tabel `mobile_app_releases`
+
+```text
+mobile_app_releases
+- id uuid pk
+- platform text
+  android
+- version_code int
+- version_name text
+- apk_path text
+- sha256 text
+- file_size bigint
+- changelog jsonb
+- force_update boolean
+- min_supported_version_code int
+- is_latest boolean
+- uploaded_by uuid
+- created_at timestamp
+```
+
+## Upload release
+
+```text
+FUNCTION upload_android_release(admin, apk_file, metadata):
+    authorize(admin, "mobile_release.upload")
+
+    validate_file_extension(apk_file, ".apk")
+    validate_mime_type(apk_file)
+    scan_file_for_malware(apk_file)
+
+    sha256 = calculate_sha256(apk_file)
+
+    store_file(apk_file, "/downloads/el-yaomy-{version}.apk")
+
+    mark_old_latest_false()
+
+    insert mobile_app_release:
+        version_code
+        version_name
+        apk_path
+        sha256
+        changelog
+        is_latest = true
+
+    audit(admin, "mobile_release.upload")
+```
+
+---
+
+# 19. Security Download APK
+
+Wajib:
+
+```text
+APK harus ditandatangani dengan keystore resmi
+Jangan ganti keystore sembarangan
+Download hanya via HTTPS
+Tampilkan SHA-256 checksum
+Batasi upload APK hanya super admin/devops
+Scan APK sebelum publish
+Simpan histori versi
+Jangan upload APK dari dashboard publik biasa
+```
+
+Endpoint download:
+
+```text
+GET /downloads/el-yaomy-1.0.12.apk
+```
+
+Security header:
+
+```text
+Content-Type: application/vnd.android.package-archive
+Content-Disposition: attachment; filename="el-yaomy-1.0.12.apk"
+X-Content-Type-Options: nosniff
+```
+
+---
+
+# 20. Integrasi PC Web RFID dengan Server Utama
+
+Topologi final:
+
+```text
+PC Server Utama
+- PostgreSQL
+- Backend API
+- Web Admin
+- Web Kantin
+- Web Top-up
+- File APK
+- Backup
+
+PC Client Kantin
+- Chrome/Edge
+- Buka sekolah.otomasi.app
+- Login petugas kantin
+- RFID HID reader
+- Printer struk
+
+PC Client Admin
+- Chrome/Edge
+- Buka sekolah.otomasi.app
+- Login admin/guru
+- RFID reader/writer serial jika perlu
+- Top-up / issue kartu
+
+HP User
+- Browser
+- PWA
+- APK WebView
+```
+
+---
+
+# 21. Alur Lengkap Kantin dengan RFID HID
+
+```text
+1. Petugas kantin login di web
+2. Sistem cek role = canteen_cashier
+3. Sistem cek terminal = Kantin 1
+4. Petugas buka shift
+5. Input scan otomatis aktif
+6. Siswa tap kartu
+7. UID masuk seperti keyboard
+8. Web kirim UID ke backend
+9. Backend validasi kartu
+10. Backend tampilkan siswa dan saldo
+11. Petugas pilih menu
+12. Checkout
+13. Backend lock wallet
+14. Backend potong saldo
+15. Backend simpan order
+16. Backend simpan wallet ledger
+17. Backend simpan jurnal
+18. Backend kirim sukses
+19. Web cetak struk
+```
+
+---
+
+# 22. Pseudocode Checkout Kantin Final
+
+```text
+FUNCTION checkout_canteen_rfid(user, terminal, raw_uid, cart):
+    authenticate(user)
+    authorize(user, "canteen.checkout")
+    authorize_terminal(terminal, "canteen")
+
+    uid_hash = hmac_sha256(SERVER_SECRET, normalize_uid(raw_uid))
+
+    card = find_active_card(uid_hash)
+
+    IF card not found:
+        REJECT "Kartu tidak dikenal"
+
+    IF card.status != "active":
+        REJECT "Kartu tidak aktif"
+
+    student = get_student(card.student_id)
+    wallet = get_wallet(student.id)
+
+    total = calculate_cart_total(cart)
+
+    IF total <= 0:
+        REJECT "Keranjang kosong"
+
+    IF exceeds_daily_limit(student.id, total):
+        REJECT "Melebihi limit harian"
+
+    idempotency_key = request.header["X-Idempotency-Key"]
+
+    IF idempotency_exists(idempotency_key):
+        RETURN previous_result
+
+    BEGIN_TRANSACTION
+        lock wallet row FOR UPDATE
+
+        IF wallet.cached_balance < total:
+            REJECT "Saldo tidak cukup"
+
+        order = create_canteen_order(
+            student_id = student.id,
+            user_id = user.id,
+            terminal_id = terminal.id,
+            total = total,
+            status = "paid"
+        )
+
+        FOR each item in cart:
+            lock product stock
+            decrease stock
+            create order item
+
+        create_wallet_transaction(
+            wallet_id = wallet.id,
+            type = "canteen_payment",
+            amount = total,
+            source_id = order.id
+        )
+
+        create_wallet_ledger(
+            wallet_id = wallet.id,
+            direction = "debit",
+            amount = total,
+            balance_before = wallet.cached_balance,
+            balance_after = wallet.cached_balance - total
+        )
+
+        update wallet.cached_balance = wallet.cached_balance - total
+
+        create_accounting_journal_for_canteen(order)
+
+        create_audit_log(user, "canteen.checkout.rfid", order.id)
+
+        save_idempotency_result(idempotency_key, order)
+    COMMIT
+
+    notify_parent_async(student.id, order)
+
+    RETURN order
+```
+
+---
+
+# 23. Alur Top-up dari Web
+
+```text
+1. Admin/guru login
+2. Buka menu Top-up
+3. Scan kartu siswa
+4. Web tampilkan siswa
+5. Input nominal
+6. Backend cek role:
+   - guru hanya kelasnya
+   - admin sesuai unitnya
+   - bendahara semua unit
+7. Backend cek limit
+8. Jika nominal besar, minta password/PIN ulang
+9. Simpan transaksi
+10. Tambah saldo wallet
+11. Simpan ledger
+12. Simpan jurnal
+13. Cetak struk
+14. Notifikasi orang tua
+```
+
+Pseudocode:
+
+```text
+FUNCTION topup_wallet_from_web(user, terminal, raw_uid, amount, method):
+    authenticate(user)
+    authorize(user, "wallet.topup")
+    authorize_terminal(terminal, "topup")
+
+    card = find_card_by_hashed_uid(raw_uid)
+
+    IF card.status != "active":
+        REJECT
+
+    student = get_student(card.student_id)
+
+    IF user.role == "teacher":
+        IF student.class_id not in user.allowed_classes:
+            REJECT "Tidak boleh top-up siswa di luar kelas"
+        IF amount > TEACHER_TOPUP_LIMIT:
+            REJECT "Melebihi limit guru"
+
+    IF amount >= REAUTH_AMOUNT_LIMIT:
+        require_reauthentication(user)
+
+    BEGIN_TRANSACTION
+        lock wallet row FOR UPDATE
+        create topup transaction
+        create wallet ledger credit
+        update wallet balance
+        create cash movement if method == cash
+        create journal:
+            Debit Kas
+            Kredit Titipan Saldo Dompet Siswa
+        audit log
+    COMMIT
+
+    send notification
+```
+
+---
+
+# 24. Catatan Penting Tentang “Reader Writer”
+
+Saya sarankan jangan terlalu bergantung pada fitur tulis kartu.
+
+Lebih aman:
+
+```text
+Kartu hanya menyimpan UID/token
+Saldo tetap di PostgreSQL
+Data siswa tetap di PostgreSQL
+Limit tetap di PostgreSQL
+Status kartu tetap di PostgreSQL
+```
+
+Kalau butuh “writer”, gunakan hanya untuk:
+
+```text
+Menulis card public token
+Menulis identitas non-sensitif
+Menulis konfigurasi kartu
+Bukan menulis saldo
+Bukan menulis password
+Bukan menulis data pribadi lengkap
+```
+
+---
+
+# 25. Final Rekomendasi Implementasi
+
+Gunakan rancangan ini:
+
+```text
+PC Client Kantin:
+- Web Chrome/Edge
+- RFID HID keyboard reader
+- Tanpa program tambahan
+- Login petugas kantin
+- Langsung scan kartu
+
+PC Client Admin:
+- Web Chrome/Edge
+- RFID HID untuk scan biasa
+- Web Serial reader/writer jika benar-benar perlu tulis kartu
+- Pertama kali klik Hubungkan Reader
+- Berikutnya auto-connect port yang sudah diizinkan
+
+HP User:
+- Responsive web
+- PWA
+- APK Android WebView
+- Domain utama: sekolah.otomasi.app
+
+Server:
+- 1 PC server utama
+- PostgreSQL
+- Backend API
+- Web frontend
+- File download APK
+- Backup otomatis
+```
+
+Keputusan paling aman dan mudah:
+
+```text
+1. Jangan simpan saldo di kartu.
+2. Jangan beri PC client akses database.
+3. Semua transaksi lewat backend API.
+4. Gunakan RFID HID untuk kantin.
+5. Gunakan Web Serial hanya untuk reader/writer yang kompatibel.
+6. Android cukup WebView aman yang membuka sekolah.otomasi.app.
+7. APK bisa di-download dari halaman /download.
+8. Semua transaksi wajib audit, idempotency, limit, dan row lock.
+```
+
+[1]: https://developer.chrome.com/docs/capabilities/serial "Read from and write to a serial port  |  Capabilities  |  Chrome for Developers"
+[2]: https://developer.mozilla.org/en-US/docs/Web/API/Web_Serial_API "Web Serial API - Web APIs | MDN"
+[3]: https://developer.android.com/develop/ui/views/layout/webapps/webview "Build web apps in WebView  |  Android Developers"

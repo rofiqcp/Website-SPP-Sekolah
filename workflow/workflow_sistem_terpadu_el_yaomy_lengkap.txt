@@ -1,0 +1,2551 @@
+WORKFLOW SISTEM TERPADU EL YAOMY
+PostgreSQL + Backend Python + Frontend HTML/React + Android WebView + RFID
+Versi: Siap rancangan implementasi awal
+Prioritas: Security, auditability, reliability, kemudahan penggunaan web dan HP
+
+============================================================
+0. RINGKASAN TUJUAN
+============================================================
+
+Sistem ini adalah platform terpadu untuk Yayasan Pendidikan El Yaomy Klaten yang menggabungkan:
+
+1. Keuangan sekolah/yayasan.
+2. Tagihan siswa dan pembayaran SPP.
+3. Kasir sekolah.
+4. Tabungan siswa/kelas/pegawai.
+5. Dompet digital internal siswa.
+6. E-kantin berbasis RFID/QR.
+7. Inventaris dan aset.
+8. Jurnal akuntansi otomatis.
+9. Neraca dan laporan keuangan.
+10. RAB dan approval pengeluaran.
+11. Manajemen kartu RFID.
+12. Web responsive untuk PC dan HP.
+13. Android WebView untuk orang tua/siswa/guru/kepala sekolah.
+14. Backend API Python yang aman.
+15. PostgreSQL sebagai database utama.
+
+Prinsip utama:
+
+- Semua transaksi uang harus diproses di backend, bukan di frontend/client.
+- Client tidak boleh akses langsung ke PostgreSQL.
+- Saldo tidak disimpan di kartu RFID.
+- Kartu RFID hanya identitas/token.
+- Sumber kebenaran saldo adalah ledger PostgreSQL.
+- Semua transaksi finansial harus immutable atau dikoreksi dengan reversal.
+- Semua aksi penting wajib masuk audit log.
+- Keamanan lebih penting daripada fitur cepat.
+- UI harus minimalis, elegan, mudah dipakai di web desktop dan HP.
+
+============================================================
+1. STACK TEKNOLOGI
+============================================================
+
+1.1 Database
+
+- PostgreSQL 16+.
+- UUID primary key.
+- BIGINT untuk nominal rupiah.
+- JSONB untuk metadata/audit tambahan.
+- Row Level Security optional tetapi sangat disarankan untuk multi-unit.
+- Partitioning untuk tabel besar seperti audit_log, wallet_ledger, journal_entries, payment_webhooks.
+- Backup harian otomatis.
+- Point-in-time recovery jika tersedia.
+
+1.2 Backend
+
+- Python 3.10+.
+- FastAPI sebagai REST API.
+- SQLAlchemy 2.x atau SQLModel.
+- Alembic untuk database migration.
+- Pydantic untuk schema validation.
+- Redis untuk cache, rate limit, queue ringan, session blacklist.
+- Celery/RQ/Arq untuk background jobs.
+- Gunicorn/Uvicorn worker.
+- Object storage lokal/S3-compatible untuk bukti transaksi, nota, gambar aset, export PDF.
+
+1.3 Frontend Web
+
+- React + TypeScript.
+- HTML5 responsive.
+- Tailwind CSS atau CSS module minimalis.
+- Vite sebagai bundler.
+- React Query/TanStack Query untuk data fetching.
+- Zustand/Redux Toolkit untuk state sederhana.
+- PWA optional untuk installable web app.
+
+1.4 Android
+
+- Android native wrapper dengan WebView.
+- Membuka domain web resmi sistem.
+- Tidak memakai addJavascriptInterface kecuali benar-benar perlu.
+- JavaScript diaktifkan hanya untuk domain resmi.
+- SSL error wajib diblokir, bukan dilewati.
+
+1.5 RFID
+
+Mode yang didukung:
+
+- Mode A: RFID keyboard/HID untuk kasir kantin dan scan cepat.
+- Mode B: Web Serial untuk reader/writer serial di Chrome/Edge desktop.
+- Mode C: Local bridge/native bridge hanya jika hardware tidak bisa langsung via web.
+
+Rekomendasi MVP:
+
+- Kantin menggunakan reader HID keyboard.
+- Admin kartu menggunakan reader serial/Web Serial bila perlu tulis token.
+- Saldo tetap di server PostgreSQL.
+
+============================================================
+2. ARSITEKTUR SISTEM
+============================================================
+
+2.1 Arsitektur High Level
+
+[User Web/HP]
+    -> HTTPS
+[React Frontend]
+    -> REST API / WebSocket
+[FastAPI Backend]
+    -> PostgreSQL
+    -> Redis
+    -> File Storage
+    -> Payment Gateway
+    -> WhatsApp Gateway
+    -> Background Worker
+
+[PC Client Kantin/Admin]
+    -> Browser
+    -> RFID Reader HID/Web Serial/Bridge
+    -> Backend API via HTTPS/LAN
+
+2.2 Topologi Lokal Sekolah
+
+Internet/LAN
+   |
+Router/Firewall
+   |
+Switch LAN
+   |
+----------------------------------------------------
+|                    |                             |
+Server Utama         PC Client Kantin              PC Client Admin/Kasir
+PostgreSQL           Browser POS                   Browser Admin/Kasir
+Backend API          RFID reader                   RFID reader/writer
+Frontend Web         Printer struk                 Printer struk
+Worker/Backup
+
+2.3 Aturan Penting Arsitektur
+
+- PC client tidak boleh konek langsung ke PostgreSQL.
+- PC client tidak menyimpan saldo.
+- PC client tidak menyimpan password database.
+- Semua request transaksi harus lewat backend API.
+- Backend wajib validasi user, role, object access, device, nominal, status, idempotency.
+- Semua endpoint finansial wajib transaction-safe.
+- Semua pengurangan saldo wajib SELECT FOR UPDATE atau row lock.
+- Semua webhook payment gateway wajib verifikasi signature.
+
+============================================================
+3. ROLE DAN HAK AKSES
+============================================================
+
+Role minimal:
+
+1. Super Admin Yayasan
+   - Kelola foundation, unit, user, role, permission, konfigurasi, backup, audit.
+
+2. Admin Unit Sekolah
+   - Kelola data siswa, kelas, pegawai, tagihan unit, kartu siswa unit.
+
+3. Bendahara Yayasan
+   - Konsolidasi laporan semua unit, jurnal, kas/bank, RAB, approval besar.
+
+4. Bendahara Unit
+   - Tagihan, pembayaran, kas unit, jurnal unit, laporan unit.
+
+5. Kepala Sekolah
+   - Dashboard, approval RAB/pengeluaran, laporan, tunggakan.
+
+6. Wali Kelas
+   - Lihat tagihan siswa kelasnya, laporan tunggakan kelas, top-up terbatas jika diberi izin.
+
+7. Guru/Pegawai
+   - Lihat transaksi pribadi, tabungan pegawai, fitur yang diberi akses.
+
+8. Kasir Sekolah
+   - Terima pembayaran tunai/non-tunai, top-up, cetak struk, closing shift.
+
+9. Petugas Kantin
+   - POS kantin, scan kartu, jual produk, closing shift kantin.
+
+10. Petugas Gudang/Aset
+    - Inventaris, aset, mutasi, opname.
+
+11. Orang Tua/Wali
+    - Lihat tagihan anak, bayar online, saldo, riwayat kantin, limit jajan, blokir kartu hilang.
+
+12. Siswa
+    - Lihat saldo, riwayat belanja, kartu/QR pribadi.
+
+13. Auditor
+    - Read-only laporan, jurnal, audit trail.
+
+Prinsip akses:
+
+- Role Based Access Control untuk permission umum.
+- Object Level Authorization untuk data spesifik.
+- Unit scoping: user hanya boleh akses unit yang diizinkan.
+- Class scoping: wali kelas hanya kelasnya.
+- Parent scoping: orang tua hanya anaknya sendiri.
+- Device scoping: reader kantin tidak boleh top-up jika tidak diizinkan.
+
+Pseudocode authorization:
+
+FUNCTION authorize(user, permission, object = null):
+    IF user.status != 'active':
+        REJECT 'User tidak aktif'
+
+    IF permission not in user.permissions:
+        REJECT 'Tidak punya izin'
+
+    IF object is not null:
+        IF object.unit_id not in user.allowed_unit_ids:
+            REJECT 'Tidak boleh akses unit ini'
+
+        IF user.role == 'parent':
+            IF object.student_id not in user.guardian_student_ids:
+                REJECT 'Orang tua hanya boleh akses anak sendiri'
+
+        IF user.role == 'homeroom_teacher':
+            IF object.class_id not in user.allowed_class_ids:
+                REJECT 'Wali kelas hanya boleh akses kelasnya'
+
+    RETURN true
+
+============================================================
+4. DESAIN UI/UX WEB DAN HP
+============================================================
+
+4.1 Prinsip Desain
+
+- Minimalis: tampilan bersih, tidak penuh warna berlebihan.
+- Responsif: satu sistem nyaman dipakai di PC, tablet, dan HP.
+- Role-based home: dashboard berbeda sesuai role.
+- Aksi utama selalu jelas: Bayar, Top-up, Scan, Approve, Cetak, Export.
+- Warna status konsisten:
+  - Hijau: sukses/paid/active.
+  - Kuning: pending/partial/need approval.
+  - Merah: overdue/blocked/rejected/failed.
+  - Abu-abu: draft/cancelled/closed.
+- Semua form finansial punya konfirmasi sebelum submit.
+- Nominal besar wajib re-authentication/PIN/password ulang.
+- Error harus manusiawi, tidak menampilkan stack trace.
+
+4.2 Layout Desktop
+
+- Sidebar kiri: Dashboard, Siswa, Tagihan, Pembayaran, Kasir, Kantin, Tabungan, Dompet, Jurnal, Laporan, Aset, RAB, RFID, Setting.
+- Topbar: unit aktif, tahun ajaran, search, notifikasi, profile.
+- Content area: card, tabel, filter, detail drawer.
+- Shortcut kasir: scan NIS/RFID, search siswa, quick payment.
+
+4.3 Layout HP
+
+- Bottom navigation untuk role parent/siswa/guru:
+  - Home
+  - Tagihan
+  - Saldo
+  - Riwayat
+  - Profil
+- Card besar untuk saldo/tagihan.
+- Tombol bayar jelas.
+- Riwayat transaksi dalam timeline.
+- Approval kepala sekolah: kartu ringkas dengan approve/reject.
+
+4.4 Komponen Utama React
+
+- AppLayout
+- AuthGuard
+- RoleGuard
+- UnitSwitcher
+- DashboardCards
+- DataTable
+- MoneyInput
+- ConfirmDialog
+- ReauthDialog
+- ReceiptModal
+- RFIDStatusBadge
+- ScanInput
+- PaymentStatusBadge
+- AuditTimeline
+- ReportFilter
+- ExportButton
+
+Pseudocode routing frontend:
+
+ROUTES:
+    /login
+    /dashboard
+    /students
+    /billing/invoices
+    /payments
+    /cashier
+    /canteen/pos
+    /wallets
+    /savings
+    /journal
+    /reports
+    /budget
+    /inventory
+    /assets
+    /rfid/cards
+    /settings/users
+
+FUNCTION ProtectedRoute(requiredPermission):
+    user = getCurrentUser()
+    IF not user:
+        redirect('/login')
+    IF requiredPermission not in user.permissions:
+        showForbidden()
+    renderPage()
+
+============================================================
+5. DATABASE POSTGRESQL
+============================================================
+
+5.1 Prinsip Database
+
+- Semua tabel utama punya id UUID.
+- Semua tabel master punya created_at, updated_at, deleted_at.
+- Semua transaksi finansial tidak boleh hard delete.
+- Koreksi transaksi pakai reversal.
+- Semua nominal uang pakai BIGINT rupiah.
+- Semua tabel transaksi punya created_by.
+- Semua data unit punya unit_id.
+- Semua tabel besar di-index berdasarkan unit_id, created_at, status.
+- Semua foreign key penting wajib index.
+- Gunakan constraint untuk mencegah data tidak valid.
+
+5.2 Core Tables
+
+foundations:
+- id uuid pk
+- name text
+- legal_name text
+- address text
+- phone text
+- email text
+- tax_number text nullable
+- logo_url text nullable
+- status text
+- created_at timestamp
+
+school_units:
+- id uuid pk
+- foundation_id uuid fk
+- code text unique
+- name text
+- level text
+- address text
+- principal_user_id uuid nullable
+- status text
+- created_at timestamp
+
+academic_years:
+- id uuid pk
+- foundation_id uuid fk
+- name text
+- start_date date
+- end_date date
+- is_active boolean
+
+classes:
+- id uuid pk
+- unit_id uuid fk
+- academic_year_id uuid fk
+- name text
+- grade_level text
+- homeroom_teacher_id uuid nullable
+- status text
+
+students:
+- id uuid pk
+- unit_id uuid fk
+- class_id uuid fk nullable
+- nis text
+- nisn text nullable
+- full_name text
+- gender text
+- birth_place text nullable
+- birth_date date nullable
+- address text nullable
+- guardian_name text
+- guardian_phone text
+- guardian_email text nullable
+- enrollment_status text
+- admission_date date
+- graduation_date date nullable
+- created_at timestamp
+- updated_at timestamp
+
+employees:
+- id uuid pk
+- unit_id uuid nullable
+- employee_no text
+- full_name text
+- position text
+- phone text nullable
+- email text nullable
+- employment_status text
+- active_status text
+
+users:
+- id uuid pk
+- foundation_id uuid fk
+- email text unique nullable
+- phone text unique nullable
+- password_hash text
+- mfa_enabled boolean default false
+- status text
+- last_login_at timestamp nullable
+- failed_login_count int default 0
+- locked_until timestamp nullable
+- created_at timestamp
+- updated_at timestamp
+
+roles:
+- id uuid pk
+- foundation_id uuid fk
+- code text
+- name text
+- description text nullable
+
+permissions:
+- id uuid pk
+- code text unique
+- description text
+
+role_permissions:
+- role_id uuid fk
+- permission_id uuid fk
+
+user_roles:
+- user_id uuid fk
+- role_id uuid fk
+- unit_id uuid nullable
+- class_id uuid nullable
+
+parent_students:
+- parent_user_id uuid fk
+- student_id uuid fk
+- relationship text
+- is_primary boolean
+
+5.3 Tagihan dan Pembayaran
+
+billing_types:
+- id uuid pk
+- foundation_id uuid fk
+- code text
+- name text
+- default_receivable_account_id uuid nullable
+- default_revenue_account_id uuid nullable
+- is_recurring boolean
+- status text
+
+billing_rules:
+- id uuid pk
+- unit_id uuid fk
+- billing_type_id uuid fk
+- academic_year_id uuid fk
+- class_id uuid nullable
+- grade_level text nullable
+- amount bigint
+- recurrence text
+- due_day int nullable
+- start_period date nullable
+- end_period date nullable
+- status text
+
+invoices:
+- id uuid pk
+- unit_id uuid fk
+- student_id uuid fk
+- invoice_number text unique
+- academic_year_id uuid fk
+- period_month int nullable
+- period_year int nullable
+- issue_date date
+- due_date date
+- subtotal_amount bigint
+- discount_amount bigint
+- penalty_amount bigint
+- total_amount bigint
+- paid_amount bigint
+- outstanding_amount bigint
+- status text
+- posted_journal_id uuid nullable
+- created_at timestamp
+- updated_at timestamp
+
+invoice_items:
+- id uuid pk
+- invoice_id uuid fk
+- billing_type_id uuid fk
+- description text
+- amount bigint
+- discount_amount bigint
+- penalty_amount bigint
+- net_amount bigint
+- paid_amount bigint
+- status text
+
+payment_intents:
+- id uuid pk
+- unit_id uuid fk
+- payer_user_id uuid nullable
+- student_id uuid fk
+- method text
+- provider text nullable
+- external_reference text nullable
+- payment_code text nullable
+- amount bigint
+- admin_fee bigint default 0
+- expired_at timestamp nullable
+- status text
+- idempotency_key text unique
+- created_at timestamp
+
+payments:
+- id uuid pk
+- unit_id uuid fk
+- payment_number text unique
+- student_id uuid nullable
+- payer_name text nullable
+- method text
+- provider text nullable
+- external_transaction_id text unique nullable
+- amount bigint
+- admin_fee bigint default 0
+- paid_at timestamp
+- cashier_user_id uuid nullable
+- status text
+- journal_id uuid nullable
+
+payment_allocations:
+- id uuid pk
+- payment_id uuid fk
+- invoice_id uuid fk
+- invoice_item_id uuid nullable
+- amount bigint
+
+payment_webhook_events:
+- id uuid pk
+- provider text
+- external_transaction_id text
+- payload_hash text
+- payload jsonb
+- signature_valid boolean
+- processing_status text
+- received_at timestamp
+- processed_at timestamp nullable
+- error_message text nullable
+
+5.4 Wallet, Tabungan, dan Ledger
+
+financial_accounts:
+- id uuid pk
+- unit_id uuid fk
+- owner_type text
+- owner_id uuid
+- account_type text
+- account_number text unique
+- name text
+- cached_balance bigint default 0
+- status text
+- daily_limit bigint nullable
+- created_at timestamp
+- updated_at timestamp
+
+account_ledger:
+- id uuid pk
+- account_id uuid fk
+- transaction_type text
+- direction text
+- amount bigint
+- balance_before bigint
+- balance_after bigint
+- source_type text
+- source_id uuid
+- description text nullable
+- created_by uuid
+- created_at timestamp
+
+wallets:
+- id uuid pk
+- unit_id uuid fk
+- owner_type text
+- owner_id uuid
+- wallet_number text unique
+- cached_balance bigint default 0
+- status text
+- daily_spending_limit bigint
+- single_transaction_limit bigint
+- require_pin_above_amount bigint nullable
+- created_at timestamp
+- updated_at timestamp
+
+wallet_transactions:
+- id uuid pk
+- unit_id uuid fk
+- wallet_id uuid fk
+- transaction_number text unique
+- amount bigint
+- transaction_type text
+- status text
+- reference_no text nullable
+- device_id uuid nullable
+- cashier_session_id uuid nullable
+- approved_by uuid nullable
+- created_by uuid
+- created_at timestamp
+
+wallet_ledger:
+- id uuid pk
+- wallet_id uuid fk
+- transaction_id uuid fk
+- direction text
+- transaction_type text
+- amount bigint
+- balance_before bigint
+- balance_after bigint
+- source_module text
+- source_id uuid
+- description text nullable
+- created_by uuid
+- created_at timestamp
+
+5.5 Kasir dan Kantin
+
+cashier_sessions:
+- id uuid pk
+- unit_id uuid fk
+- cashier_user_id uuid fk
+- location_type text
+- opened_at timestamp
+- opening_cash bigint
+- closed_at timestamp nullable
+- closing_cash_system bigint nullable
+- closing_cash_actual bigint nullable
+- difference_amount bigint nullable
+- status text
+
+cash_movements:
+- id uuid pk
+- session_id uuid fk
+- movement_type text
+- source_type text
+- source_id uuid
+- amount bigint
+- method text
+- description text nullable
+- created_at timestamp
+
+canteen_products:
+- id uuid pk
+- unit_id uuid fk
+- sku text unique
+- name text
+- category_id uuid nullable
+- selling_price bigint
+- cost_price bigint
+- stock_tracking_enabled boolean
+- stock_qty int default 0
+- status text
+
+canteen_orders:
+- id uuid pk
+- unit_id uuid fk
+- order_number text unique
+- student_id uuid nullable
+- cashier_user_id uuid fk
+- device_id uuid nullable
+- cashier_session_id uuid fk
+- subtotal_amount bigint
+- discount_amount bigint
+- total_amount bigint
+- payment_method text
+- status text
+- created_at timestamp
+
+canteen_order_items:
+- id uuid pk
+- order_id uuid fk
+- product_id uuid fk
+- product_name text
+- qty int
+- unit_price bigint
+- total_price bigint
+
+5.6 RFID dan Terminal
+
+rfid_cards:
+- id uuid pk
+- unit_id uuid fk
+- student_id uuid nullable
+- employee_id uuid nullable
+- card_uid_hash text unique
+- card_public_id text unique
+- card_type text
+- card_label text nullable
+- status text
+- issued_at timestamp nullable
+- expired_at timestamp nullable
+- blocked_at timestamp nullable
+- blocked_reason text nullable
+- replaced_by_card_id uuid nullable
+- created_by uuid
+- created_at timestamp
+- updated_at timestamp
+
+rfid_card_events:
+- id uuid pk
+- card_id uuid fk
+- event_type text
+- device_id uuid nullable
+- user_id uuid nullable
+- ip_address text nullable
+- metadata jsonb
+- created_at timestamp
+
+rfid_devices:
+- id uuid pk
+- unit_id uuid fk
+- device_code text unique
+- device_name text
+- device_type text
+- location_type text
+- location_name text
+- pc_client_name text nullable
+- allowed_module text[]
+- api_key_hash text nullable
+- status text
+- last_seen_at timestamp nullable
+- created_at timestamp
+
+rfid_device_sessions:
+- id uuid pk
+- device_id uuid fk
+- user_id uuid fk
+- login_at timestamp
+- logout_at timestamp nullable
+- ip_address text
+- status text
+
+web_terminals:
+- id uuid pk
+- unit_id uuid fk
+- terminal_code text unique
+- terminal_name text
+- location_name text
+- allowed_modules text[]
+- public_key text
+- status text
+- enrolled_by uuid
+- enrolled_at timestamp
+- last_seen_at timestamp nullable
+- last_ip text nullable
+- user_agent text nullable
+
+5.7 Akuntansi, Jurnal, Laporan
+
+chart_of_accounts:
+- id uuid pk
+- foundation_id uuid fk
+- parent_id uuid nullable
+- code text
+- name text
+- account_type text
+- normal_balance text
+- is_active boolean
+
+journal_entries:
+- id uuid pk
+- unit_id uuid fk
+- journal_number text unique
+- journal_date date
+- description text
+- source_module text nullable
+- source_id uuid nullable
+- status text
+- posted_by uuid nullable
+- posted_at timestamp nullable
+- created_by uuid
+- created_at timestamp
+
+journal_lines:
+- id uuid pk
+- journal_id uuid fk
+- account_id uuid fk
+- debit bigint default 0
+- credit bigint default 0
+- description text nullable
+
+accounting_periods:
+- id uuid pk
+- unit_id uuid fk
+- period_year int
+- period_month int
+- status text
+- locked_by uuid nullable
+- locked_at timestamp nullable
+
+5.8 RAB, Inventaris, Aset
+
+budgets:
+- id uuid pk
+- unit_id uuid fk
+- academic_year_id uuid fk
+- name text
+- period_start date
+- period_end date
+- status text
+- submitted_by uuid nullable
+- approved_by uuid nullable
+- approved_at timestamp nullable
+
+budget_lines:
+- id uuid pk
+- budget_id uuid fk
+- account_id uuid fk
+- description text
+- amount bigint
+- realized_amount bigint default 0
+
+expense_requests:
+- id uuid pk
+- unit_id uuid fk
+- request_number text unique
+- requester_id uuid
+- account_id uuid fk
+- amount bigint
+- description text
+- status text
+- current_approval_level int
+- created_at timestamp
+
+inventory_items:
+- id uuid pk
+- unit_id uuid fk
+- sku text unique
+- name text
+- category text
+- unit_name text
+- min_stock int
+- current_stock int
+- status text
+
+inventory_movements:
+- id uuid pk
+- item_id uuid fk
+- movement_type text
+- qty int
+- source_type text nullable
+- source_id uuid nullable
+- description text nullable
+- created_by uuid
+- created_at timestamp
+
+fixed_assets:
+- id uuid pk
+- unit_id uuid fk
+- asset_number text unique
+- name text
+- category text
+- location text
+- responsible_user_id uuid nullable
+- acquisition_date date
+- acquisition_cost bigint
+- useful_life_months int nullable
+- accumulated_depreciation bigint default 0
+- status text
+- photo_url text nullable
+
+asset_movements:
+- id uuid pk
+- asset_id uuid fk
+- from_location text nullable
+- to_location text nullable
+- reason text
+- moved_by uuid
+- moved_at timestamp
+
+5.9 Audit dan Security
+
+audit_logs:
+- id uuid pk
+- foundation_id uuid fk
+- unit_id uuid nullable
+- actor_user_id uuid nullable
+- action text
+- object_type text
+- object_id uuid nullable
+- ip_address text nullable
+- user_agent text nullable
+- before_data jsonb nullable
+- after_data jsonb nullable
+- metadata jsonb nullable
+- created_at timestamp
+
+security_events:
+- id uuid pk
+- severity text
+- event_type text
+- actor_user_id uuid nullable
+- ip_address text nullable
+- description text
+- metadata jsonb nullable
+- created_at timestamp
+
+idempotency_keys:
+- id uuid pk
+- key text unique
+- endpoint text
+- request_hash text
+- response_body jsonb nullable
+- status text
+- created_at timestamp
+- expires_at timestamp
+
+============================================================
+6. BACKEND PYTHON FASTAPI
+============================================================
+
+6.1 Struktur Folder
+
+backend/
+  app/
+    main.py
+    config.py
+    db.py
+    security/
+      auth.py
+      password.py
+      jwt.py
+      csrf.py
+      rate_limit.py
+      permissions.py
+      terminal_signature.py
+    models/
+      user.py
+      student.py
+      billing.py
+      payment.py
+      wallet.py
+      rfid.py
+      accounting.py
+      canteen.py
+      budget.py
+      asset.py
+      audit.py
+    schemas/
+    routers/
+      auth.py
+      students.py
+      billing.py
+      payments.py
+      cashier.py
+      canteen.py
+      wallets.py
+      rfid.py
+      reports.py
+      accounting.py
+      budgets.py
+      assets.py
+      admin.py
+    services/
+      billing_service.py
+      payment_service.py
+      wallet_service.py
+      canteen_service.py
+      rfid_service.py
+      accounting_service.py
+      report_service.py
+      notification_service.py
+      audit_service.py
+    workers/
+      tasks.py
+    tests/
+  alembic/
+
+6.2 Middleware Wajib
+
+- Request ID middleware.
+- Secure headers middleware.
+- CORS ketat hanya domain resmi.
+- Rate limiting.
+- Authentication middleware.
+- Audit middleware untuk endpoint penting.
+- Error handler global yang tidak membocorkan detail internal.
+
+6.3 Authentication
+
+Pilihan aman:
+
+- Access token pendek umur 5-15 menit.
+- Refresh token HttpOnly Secure SameSite cookie.
+- Password hash Argon2id atau bcrypt kuat.
+- MFA optional untuk admin/bendahara/superadmin.
+- Lock akun setelah gagal login berulang.
+- Re-authentication untuk transaksi sensitif.
+
+Pseudocode login:
+
+FUNCTION login(identifier, password, device_info):
+    user = find_user_by_email_or_phone(identifier)
+    IF user not found:
+        generic_reject('Login gagal')
+
+    IF user.locked_until > now:
+        REJECT 'Akun terkunci sementara'
+
+    IF verify_password(password, user.password_hash) == false:
+        increment_failed_login(user)
+        IF failed_login_count >= 5:
+            lock_user_for_15_minutes(user)
+        generic_reject('Login gagal')
+
+    IF user.status != 'active':
+        REJECT 'Akun tidak aktif'
+
+    reset_failed_login(user)
+    create_session(user, device_info)
+    issue_access_token(user)
+    issue_refresh_cookie(user)
+    audit_log(user, 'auth.login')
+    RETURN profile + permissions
+
+6.4 API Response Standard
+
+Success:
+
+{
+  "success": true,
+  "data": {},
+  "request_id": "..."
+}
+
+Error:
+
+{
+  "success": false,
+  "error": {
+    "code": "WALLET_INSUFFICIENT_BALANCE",
+    "message": "Saldo tidak cukup"
+  },
+  "request_id": "..."
+}
+
+============================================================
+7. WORKFLOW TAGIHAN SISWA
+============================================================
+
+7.1 Fitur
+
+- Master jenis tagihan.
+- Generate tagihan per kelas/unit/angkatan/siswa.
+- Tagihan bulanan, semester, tahunan, sekali bayar.
+- Diskon, beasiswa, subsidi, keringanan.
+- Cicilan dan partial payment.
+- Status draft, published, partial, paid, overdue, cancelled, write_off.
+- Reminder WhatsApp.
+- Aging receivable.
+
+7.2 Generate Tagihan Bulanan
+
+FUNCTION generate_monthly_invoices(unit_id, period_month, period_year, actor):
+    authorize(actor, 'billing.generate', unit_id)
+    rules = get_active_billing_rules(unit_id, period_month, period_year)
+    students = get_active_students(unit_id)
+
+    FOR student IN students:
+        FOR rule IN rules:
+            IF rule.applies_to(student) == false:
+                CONTINUE
+
+            IF invoice_exists(student.id, rule.id, period_month, period_year):
+                CONTINUE
+
+            base_amount = rule.amount
+            discount = calculate_student_discount(student, rule)
+            net_amount = base_amount - discount
+
+            BEGIN_TRANSACTION
+                invoice = create_invoice(
+                    student_id = student.id,
+                    unit_id = unit_id,
+                    period_month = period_month,
+                    period_year = period_year,
+                    total_amount = net_amount,
+                    status = 'published'
+                )
+
+                create_invoice_item(invoice.id, rule.billing_type_id, net_amount)
+
+                IF accounting_policy == 'accrual':
+                    journal = create_journal_for_invoice(invoice)
+                    mark_invoice_posted(invoice, journal.id)
+
+                audit_log(actor, 'billing.generate_invoice', invoice.id)
+            COMMIT
+
+            enqueue_notification(student.guardian, 'invoice_created', invoice.id)
+
+    RETURN summary
+
+7.3 Update Status Overdue
+
+FUNCTION update_overdue_invoices():
+    invoices = find_published_or_partial_invoices_due_before(today)
+    FOR invoice IN invoices:
+        IF invoice.outstanding_amount > 0:
+            invoice.status = 'overdue'
+            save(invoice)
+            enqueue_notification(invoice.student.guardian, 'invoice_overdue', invoice.id)
+
+============================================================
+8. WORKFLOW PEMBAYARAN SPP ONLINE DAN KASIR
+============================================================
+
+8.1 Metode Pembayaran
+
+- Virtual Account.
+- QRIS.
+- Transfer manual.
+- Payment gateway/e-wallet.
+- Tunai kasir.
+- Potong tabungan/dompet internal.
+- Cicilan.
+- Multi-invoice payment.
+
+8.2 Buat Payment Intent Online
+
+FUNCTION create_online_payment(parent_user, invoice_ids, method):
+    authorize(parent_user, 'payment.create')
+
+    invoices = get_invoices(invoice_ids)
+    FOR invoice IN invoices:
+        authorize(parent_user, 'invoice.pay', invoice)
+        IF invoice.status in ['paid', 'cancelled']:
+            REJECT 'Tagihan tidak bisa dibayar'
+
+    total = sum(invoice.outstanding_amount for invoice in invoices)
+    IF total <= 0:
+        REJECT 'Tidak ada nominal yang harus dibayar'
+
+    idempotency_key = generate_idempotency_key()
+
+    BEGIN_TRANSACTION
+        intent = create_payment_intent(
+            payer_user_id = parent_user.id,
+            student_id = invoices[0].student_id,
+            method = method,
+            amount = total,
+            status = 'pending',
+            idempotency_key = idempotency_key
+        )
+
+        gateway_response = payment_gateway.create_charge(
+            amount = total,
+            method = method,
+            reference = intent.id
+        )
+
+        save_gateway_reference(intent, gateway_response)
+        audit_log(parent_user, 'payment.intent.create', intent.id)
+    COMMIT
+
+    RETURN payment_instruction
+
+8.3 Webhook Payment Gateway
+
+FUNCTION payment_webhook(provider, payload, signature):
+    IF verify_gateway_signature(provider, payload, signature) == false:
+        save_webhook_event(provider, payload, false, 'rejected')
+        REJECT 'Invalid signature'
+
+    external_id = payload.external_transaction_id
+
+    IF webhook_already_processed(external_id):
+        RETURN success_idempotent
+
+    BEGIN_TRANSACTION
+        save_webhook_event(provider, payload, true, 'processing')
+
+        intent = find_payment_intent(payload.reference)
+        IF intent is null:
+            mark_webhook_failed('intent_not_found')
+            REJECT 'Intent tidak ditemukan'
+
+        IF payload.amount != intent.amount:
+            mark_webhook_failed('amount_mismatch')
+            REJECT 'Nominal tidak cocok'
+
+        IF payload.status == 'PAID':
+            payment = create_payment_from_intent(intent, external_id)
+            allocate_payment_to_invoices(payment, intent.invoice_ids)
+            journal = create_journal_for_payment(payment)
+            intent.status = 'paid'
+            payment.journal_id = journal.id
+            audit_log(null, 'payment.webhook.paid', payment.id)
+
+        mark_webhook_processed(external_id)
+    COMMIT
+
+    enqueue_receipt_notification(payment.id)
+    RETURN success
+
+8.4 Pembayaran Tunai Kasir
+
+FUNCTION cashier_payment(cashier, session_id, student_id, invoice_ids, amount, method):
+    authorize(cashier, 'cashier.payment')
+    session = get_active_cashier_session(session_id, cashier.id)
+    IF not session:
+        REJECT 'Kasir belum buka shift'
+
+    invoices = get_invoices(invoice_ids)
+    total_unpaid = sum(outstanding_amount)
+    IF amount <= 0 or amount > total_unpaid:
+        REJECT 'Nominal tidak valid'
+
+    request_id = require_idempotency_key()
+
+    BEGIN_TRANSACTION
+        lock_invoices(invoice_ids)
+
+        payment = create_payment(
+            unit_id = session.unit_id,
+            student_id = student_id,
+            method = method,
+            amount = amount,
+            cashier_user_id = cashier.id,
+            status = 'success'
+        )
+
+        allocate_payment_to_invoices(payment, invoices)
+        create_cash_movement(session.id, 'in', payment.id, amount, method)
+        journal = create_journal_for_payment(payment)
+        payment.journal_id = journal.id
+        receipt = generate_receipt(payment.id)
+        audit_log(cashier, 'cashier.payment', payment.id)
+    COMMIT
+
+    print_receipt(receipt)
+    send_receipt_notification(payment.id)
+    RETURN payment
+
+============================================================
+9. WORKFLOW WALLET, TABUNGAN, DAN TOP-UP
+============================================================
+
+9.1 Prinsip
+
+- Wallet dan tabungan memakai ledger.
+- cached_balance hanya cache.
+- Setiap debit/kredit wajib punya ledger.
+- Tidak boleh edit ledger lama.
+- Koreksi pakai reversal.
+- Wallet siswa adalah titipan/kewajiban, bukan pendapatan sekolah.
+
+9.2 Top-up Wallet oleh Kasir/Admin/Guru
+
+FUNCTION topup_wallet(actor, wallet_id, amount, payment_method, source_device_id):
+    authorize(actor, 'wallet.topup')
+    wallet = get_wallet(wallet_id)
+    authorize(actor, 'wallet.access', wallet)
+
+    IF amount <= 0:
+        REJECT 'Nominal tidak valid'
+
+    IF actor.role == 'teacher':
+        student = get_wallet_owner_student(wallet)
+        IF student.class_id not in actor.allowed_class_ids:
+            REJECT 'Guru hanya boleh top-up siswa kelasnya'
+        IF amount > TEACHER_SINGLE_TOPUP_LIMIT:
+            REJECT 'Nominal melebihi limit guru'
+
+    IF amount >= REAUTH_TOPUP_THRESHOLD:
+        require_reauthentication(actor)
+
+    BEGIN_TRANSACTION
+        locked_wallet = lock_wallet(wallet.id)
+        balance_before = locked_wallet.cached_balance
+        balance_after = balance_before + amount
+
+        tx = create_wallet_transaction(
+            wallet_id = wallet.id,
+            amount = amount,
+            transaction_type = 'topup',
+            status = 'success',
+            device_id = source_device_id,
+            created_by = actor.id
+        )
+
+        insert_wallet_ledger(
+            wallet_id = wallet.id,
+            transaction_id = tx.id,
+            direction = 'credit',
+            transaction_type = 'topup',
+            amount = amount,
+            balance_before = balance_before,
+            balance_after = balance_after,
+            source_module = 'wallet',
+            source_id = tx.id,
+            created_by = actor.id
+        )
+
+        update_wallet_balance(wallet.id, balance_after)
+
+        IF payment_method == 'cash':
+            create_cash_movement_for_topup(actor, tx, amount)
+
+        create_journal_for_wallet_topup(tx)
+        audit_log(actor, 'wallet.topup', tx.id)
+    COMMIT
+
+    send_guardian_notification(wallet.owner_id, 'wallet_topup', tx.id)
+    RETURN tx
+
+9.3 Debit Wallet
+
+FUNCTION debit_wallet(wallet_id, amount, source_module, source_id, actor):
+    IF amount <= 0:
+        REJECT 'Nominal tidak valid'
+
+    BEGIN_TRANSACTION
+        wallet = SELECT wallet FOR UPDATE
+
+        IF wallet.status != 'active':
+            REJECT 'Wallet tidak aktif'
+
+        IF wallet.cached_balance < amount:
+            REJECT 'Saldo tidak cukup'
+
+        IF amount > wallet.single_transaction_limit:
+            REJECT 'Melebihi limit transaksi'
+
+        balance_before = wallet.cached_balance
+        balance_after = balance_before - amount
+
+        tx = create_wallet_transaction(...)
+        insert_wallet_ledger(direction='debit', balance_before, balance_after)
+        update_wallet_balance(wallet_id, balance_after)
+        audit_log(actor, 'wallet.debit', tx.id)
+    COMMIT
+
+    RETURN tx
+
+9.4 Transfer Antar Tabungan
+
+FUNCTION transfer_account(actor, from_account_id, to_account_id, amount):
+    authorize(actor, 'account.transfer')
+    IF amount <= 0:
+        REJECT
+
+    BEGIN_TRANSACTION
+        from_account = lock_account(from_account_id)
+        to_account = lock_account(to_account_id)
+
+        IF from_account.cached_balance < amount:
+            REJECT 'Saldo tidak cukup'
+
+        create_transfer_record()
+        ledger_debit(from_account, amount)
+        ledger_credit(to_account, amount)
+        update_balances()
+        audit_log(actor, 'account.transfer')
+    COMMIT
+
+============================================================
+10. WORKFLOW RFID
+============================================================
+
+10.1 Prinsip RFID
+
+- RFID UID/card token tidak boleh dianggap sebagai bukti kepemilikan mutlak.
+- Untuk UID-only, wajib limit nominal rendah, audit, dan blokir cepat.
+- Untuk keamanan lebih tinggi, gunakan MIFARE DESFire EV2/EV3.
+- Saldo tidak disimpan di kartu.
+- UID disimpan di database sebagai HMAC_SHA256(server_secret, raw_uid), bukan plaintext.
+
+10.2 Mode RFID Keyboard/HID
+
+Flow:
+
+1. Kasir login ke POS.
+2. Input scan RFID tersembunyi/fokus.
+3. Reader mengirim UID seperti keyboard + Enter.
+4. Frontend normalisasi UID.
+5. Frontend kirim UID ke backend.
+6. Backend validasi kartu, user, terminal, device, limit.
+7. Backend mengembalikan data siswa/saldo.
+
+Frontend pseudocode:
+
+FUNCTION start_keyboard_rfid_listener():
+    buffer = ''
+    focus_hidden_input()
+
+    ON keydown(event):
+        IF event.key == 'Enter':
+            raw_uid = buffer.trim()
+            buffer = ''
+            IF is_valid_rfid(raw_uid):
+                handle_card_scanned(raw_uid)
+        ELSE:
+            buffer += event.key
+
+FUNCTION handle_card_scanned(raw_uid):
+    uid = normalize_uid(raw_uid)
+    IF same_uid_scanned_within_2_seconds(uid):
+        RETURN
+
+    context = get_current_page_context()
+    POST /api/rfid/scan { raw_uid: uid, mode: 'hid_keyboard', context }
+
+10.3 Mode Web Serial
+
+FUNCTION connect_serial_reader_first_time():
+    REQUIRE user_click_button
+    IF navigator.serial not available:
+        show_error('Browser tidak mendukung Web Serial')
+        RETURN
+    port = navigator.serial.requestPort(filters)
+    open_serial_port(port)
+
+FUNCTION try_auto_connect_previous_serial_reader():
+    ports = navigator.serial.getPorts()
+    FOR port IN ports:
+        TRY open_serial_port(port)
+        IF success:
+            RETURN
+
+FUNCTION open_serial_port(port):
+    port.open(baudRate=9600, dataBits=8, stopBits=1, parity='none')
+    WHILE port.readable:
+        data = read_bytes()
+        text = decode(data)
+        append_to_buffer(text)
+        IF complete_frame_detected(buffer):
+            raw_uid = parse_uid(buffer)
+            buffer = ''
+            handle_card_scanned(raw_uid)
+
+10.4 Endpoint Scan RFID
+
+POST /api/rfid/scan
+
+Payload:
+{
+  "raw_uid": "04A1B2C3D4",
+  "mode": "hid_keyboard",
+  "terminal_id": "terminal-kantin-01",
+  "context": "canteen_pos"
+}
+
+Backend pseudocode:
+
+FUNCTION rfid_scan(request, user):
+    authenticate(user)
+    validate_terminal(request.terminal_id, user)
+    authorize(user, 'rfid.scan')
+
+    uid_hash = hmac_sha256(SERVER_SECRET, normalize_uid(request.raw_uid))
+    card = find_card_by_uid_hash(uid_hash)
+
+    IF card is null:
+        log_unknown_card_scan(request)
+        RETURN { status: 'unknown_card' }
+
+    IF card.status != 'active':
+        log_card_event(card, 'blocked_scan')
+        RETURN { status: 'blocked_card', reason: card.blocked_reason }
+
+    student = get_student(card.student_id)
+    wallet = get_wallet(student.id)
+    authorize(user, 'student.access', student)
+    log_card_event(card, 'scanned', request.terminal_id, user.id)
+
+    RETURN {
+        status: 'active',
+        student: { id, name, class_name, photo_url },
+        wallet: { balance, daily_limit, today_spent }
+    }
+
+10.5 Penerbitan Kartu
+
+FUNCTION issue_rfid_card(admin, device_id, student_id, raw_card_uid):
+    authorize(admin, 'rfid.issue')
+    authorize_device(device_id, 'rfid_management')
+
+    uid_hash = hmac_sha256(SERVER_SECRET, normalize_uid(raw_card_uid))
+
+    IF card_uid_hash_exists(uid_hash):
+        REJECT 'Kartu sudah terdaftar'
+
+    BEGIN_TRANSACTION
+        deactivate_old_active_cards(student_id)
+        card = create_rfid_card(student_id, uid_hash, status='active')
+        ensure_wallet_exists(student_id)
+        create_rfid_card_event(card.id, 'issued', device_id, admin.id)
+        audit_log(admin, 'rfid.issue', card.id)
+    COMMIT
+
+    RETURN card
+
+10.6 Blokir Kartu Hilang
+
+FUNCTION block_lost_card(actor, card_id, reason):
+    authorize(actor, 'rfid.block')
+    card = get_card(card_id)
+    authorize(actor, 'student.access', card.student)
+
+    BEGIN_TRANSACTION
+        update card set status='lost', blocked_at=now(), blocked_reason=reason
+        create_rfid_card_event(card.id, 'lost_reported', null, actor.id)
+        audit_log(actor, 'rfid.block_lost_card', card.id)
+    COMMIT
+
+10.7 Pembayaran Kantin RFID
+
+FUNCTION canteen_pay_by_rfid(cashier, device_id, raw_card_uid, cart_items):
+    authorize_device(device_id, 'canteen')
+    authorize(cashier, 'canteen.checkout')
+
+    session = get_active_cashier_session(cashier.id, 'canteen')
+    IF not session:
+        REJECT 'Kasir belum buka shift'
+
+    uid_hash = hmac_sha256(SERVER_SECRET, normalize_uid(raw_card_uid))
+    card = find_card_by_uid_hash(uid_hash)
+
+    IF card is null:
+        REJECT 'Kartu tidak terdaftar'
+    IF card.status != 'active':
+        REJECT 'Kartu tidak aktif'
+
+    student = get_student(card.student_id)
+    wallet = get_wallet(student.id)
+    total = calculate_cart_total(cart_items)
+
+    IF total <= 0:
+        REJECT 'Keranjang tidak valid'
+
+    today_spent = get_today_canteen_spending(student.id)
+    IF today_spent + total > wallet.daily_spending_limit:
+        REJECT 'Melebihi limit harian'
+
+    BEGIN_TRANSACTION
+        locked_wallet = lock_wallet(wallet.id)
+        IF locked_wallet.cached_balance < total:
+            REJECT 'Saldo tidak cukup'
+
+        order = create_canteen_order(student, cashier, session, total, 'wallet')
+
+        FOR item IN cart_items:
+            product = lock_product(item.product_id)
+            IF product.stock_tracking_enabled:
+                IF product.stock_qty < item.qty:
+                    REJECT 'Stok tidak cukup'
+                decrease_stock(product.id, item.qty)
+            create_canteen_order_item(order.id, item)
+
+        wallet_tx = debit_wallet_inside_transaction(wallet.id, total, 'canteen', order.id, cashier)
+        create_journal_for_canteen_sale(order, wallet_tx)
+        create_audit_log(cashier, 'canteen.rfid.payment', order.id)
+    COMMIT
+
+    print_receipt(order)
+    notify_guardian(student.id, 'canteen_purchase', order.id)
+    RETURN order
+
+============================================================
+11. WORKFLOW E-KANTIN
+============================================================
+
+11.1 Fitur
+
+- POS produk makanan/minuman.
+- Scan RFID/QR/NIS.
+- Pembayaran wallet/dompet.
+- Pembayaran tunai jika diizinkan.
+- Limit jajan harian.
+- Restriksi item tertentu.
+- Stok otomatis berkurang.
+- Closing kasir kantin.
+- Laporan penjualan dan menu terlaris.
+- Notifikasi orang tua.
+
+11.2 Checkout Manual Tanpa RFID
+
+FUNCTION canteen_checkout(cashier, student_id, cart_items, payment_method):
+    authorize(cashier, 'canteen.checkout')
+    session = require_active_canteen_session(cashier)
+    student = get_student(student_id)
+    total = calculate_cart_total(cart_items)
+
+    IF payment_method == 'wallet':
+        process_wallet_payment(student.wallet_id, total)
+    ELSE IF payment_method == 'cash':
+        process_cash_payment(session, total)
+    ELSE:
+        REJECT
+
+    create_order_and_items()
+    update_inventory()
+    create_journal()
+    audit_log()
+    RETURN receipt
+
+============================================================
+12. WORKFLOW KASIR DAN CLOSING
+============================================================
+
+12.1 Buka Shift
+
+FUNCTION open_cashier_session(cashier, unit_id, location_type, opening_cash):
+    authorize(cashier, 'cashier.open_session')
+    IF has_active_session(cashier.id, location_type):
+        REJECT 'Masih ada shift aktif'
+
+    create_cashier_session(unit_id, cashier.id, location_type, opening_cash, status='open')
+    audit_log(cashier, 'cashier.open_session')
+
+12.2 Closing Shift
+
+FUNCTION close_cashier_session(cashier, session_id, actual_cash):
+    authorize(cashier, 'cashier.close_session')
+    session = get_session(session_id)
+    IF session.cashier_user_id != cashier.id:
+        REJECT
+
+    system_cash = calculate_system_cash(session.id)
+    difference = actual_cash - system_cash
+
+    BEGIN_TRANSACTION
+        update session set closing_cash_system=system_cash,
+                           closing_cash_actual=actual_cash,
+                           difference_amount=difference,
+                           status='closed',
+                           closed_at=now()
+        audit_log(cashier, 'cashier.close_session', session.id)
+    COMMIT
+
+    IF difference != 0:
+        notify_bendahara(session.id)
+
+============================================================
+13. WORKFLOW JURNAL DAN AKUNTANSI
+============================================================
+
+13.1 Prinsip
+
+- Total debit harus sama dengan total kredit.
+- Jurnal posted tidak boleh diedit.
+- Koreksi memakai reversal.
+- Source module dan source id wajib ada untuk jurnal otomatis.
+- Periode locked tidak boleh menerima jurnal baru kecuali reopen oleh otoritas.
+
+13.2 Posting Jurnal
+
+FUNCTION post_journal(actor, journal_id):
+    authorize(actor, 'journal.post')
+    journal = get_journal(journal_id)
+
+    IF is_period_locked(journal.unit_id, journal.journal_date):
+        REJECT 'Periode terkunci'
+
+    lines = get_journal_lines(journal_id)
+    total_debit = sum(line.debit)
+    total_credit = sum(line.credit)
+
+    IF total_debit != total_credit:
+        REJECT 'Debit dan kredit tidak seimbang'
+
+    IF journal.status == 'posted':
+        RETURN journal
+
+    BEGIN_TRANSACTION
+        update journal set status='posted', posted_by=actor.id, posted_at=now()
+        audit_log(actor, 'journal.post', journal.id)
+    COMMIT
+
+13.3 Jurnal Pembayaran SPP Basis Akrual
+
+Saat generate tagihan:
+Debit Piutang Siswa
+Kredit Pendapatan SPP
+
+Saat pembayaran:
+Debit Kas/Bank/Payment Clearing
+Kredit Piutang Siswa
+
+13.4 Jurnal Wallet Top-up
+
+Debit Kas/Bank
+Kredit Titipan Wallet Siswa
+
+13.5 Jurnal Belanja Kantin dengan Wallet
+
+Debit Titipan Wallet Siswa
+Kredit Pendapatan Kantin
+
+Jika memakai stok/cost:
+Debit HPP Kantin
+Kredit Persediaan Kantin
+
+13.6 Generate Neraca
+
+FUNCTION generate_balance_sheet(unit_id, as_of_date):
+    authorize(current_user, 'report.balance_sheet')
+    balances = get_account_balances(unit_id, as_of_date)
+
+    assets = sum(account where account_type='asset')
+    liabilities = sum(account where account_type='liability')
+    equity = sum(account where account_type='equity')
+    surplus = calculate_current_year_surplus(unit_id, as_of_date)
+
+    IF assets != liabilities + equity + surplus:
+        mark_report_warning('Neraca tidak seimbang')
+
+    RETURN grouped_report
+
+============================================================
+14. WORKFLOW RAB DAN PENGELUARAN
+============================================================
+
+14.1 Status RAB
+
+- Draft.
+- Submitted.
+- Need revision.
+- Approved.
+- Active.
+- Closed.
+- Rejected.
+
+14.2 Cek Budget Sebelum Pengeluaran
+
+FUNCTION check_budget_before_expense(unit_id, account_id, amount, period):
+    budget_line = get_active_budget_line(unit_id, account_id, period)
+    IF budget_line is null:
+        IF policy.no_budget == 'reject':
+            REJECT 'Tidak ada anggaran'
+        ELSE:
+            RETURN 'needs_approval'
+
+    remaining = budget_line.amount - budget_line.realized_amount
+    IF amount > remaining:
+        IF policy.over_budget == 'reject':
+            REJECT 'Melebihi anggaran'
+        ELSE:
+            RETURN 'needs_extra_approval'
+
+    RETURN 'ok'
+
+14.3 Request Pengeluaran
+
+FUNCTION request_expense(actor, unit_id, account_id, amount, description, attachment):
+    authorize(actor, 'expense.request')
+    budget_status = check_budget_before_expense(unit_id, account_id, amount, current_period)
+
+    create_expense_request(status='submitted', budget_status=budget_status)
+    route_approval_based_on_amount(amount)
+    audit_log(actor, 'expense.request')
+
+14.4 Approval Pengeluaran
+
+FUNCTION approve_expense(approver, expense_id):
+    expense = get_expense(expense_id)
+    authorize_approval_level(approver, expense)
+
+    BEGIN_TRANSACTION
+        add_approval_record(approver, expense)
+        IF all_required_approvals_done(expense):
+            expense.status = 'approved'
+        ELSE:
+            expense.status = 'waiting_next_approval'
+        audit_log(approver, 'expense.approve', expense.id)
+    COMMIT
+
+14.5 Bayar Pengeluaran
+
+FUNCTION pay_expense(bendahara, expense_id, cash_account_id):
+    authorize(bendahara, 'expense.pay')
+    expense = get_approved_expense(expense_id)
+
+    BEGIN_TRANSACTION
+        create_payment_out_record()
+        create_journal:
+            debit expense_account
+            credit cash_or_bank_account
+        update_budget_realization()
+        expense.status = 'paid'
+        audit_log(bendahara, 'expense.pay', expense.id)
+    COMMIT
+
+============================================================
+15. WORKFLOW INVENTARIS DAN ASET
+============================================================
+
+15.1 Inventaris
+
+Fitur:
+
+- Master barang.
+- Stok masuk.
+- Stok keluar.
+- Permintaan barang.
+- Approval stok keluar.
+- Minimum stock alert.
+- Stock opname.
+- Barang rusak/hilang.
+- Mutasi antar gudang/unit.
+
+Pseudocode stok keluar:
+
+FUNCTION inventory_issue(actor, item_id, qty, destination, reason):
+    authorize(actor, 'inventory.issue')
+    IF qty <= 0:
+        REJECT
+
+    BEGIN_TRANSACTION
+        item = lock_inventory_item(item_id)
+        IF item.current_stock < qty:
+            REJECT 'Stok tidak cukup'
+        item.current_stock -= qty
+        create_inventory_movement(item_id, 'out', qty, reason)
+        audit_log(actor, 'inventory.issue', item_id)
+    COMMIT
+
+15.2 Aset Tetap
+
+Fitur:
+
+- Register aset.
+- Nomor aset/barcode/QR.
+- Lokasi dan penanggung jawab.
+- Nilai perolehan.
+- Foto dan dokumen pembelian.
+- Penyusutan.
+- Mutasi aset.
+- Perawatan.
+- Peminjaman.
+- Penghapusan.
+- Opname aset.
+
+Pseudocode penyusutan bulanan:
+
+FUNCTION run_monthly_depreciation(period):
+    assets = get_active_depreciable_assets()
+    FOR asset IN assets:
+        IF depreciation_already_posted(asset.id, period):
+            CONTINUE
+        amount = calculate_monthly_depreciation(asset)
+        BEGIN_TRANSACTION
+            create_depreciation_record(asset, period, amount)
+            create_journal:
+                debit depreciation_expense
+                credit accumulated_depreciation
+            update asset.accumulated_depreciation += amount
+            audit_log(system, 'asset.depreciation', asset.id)
+        COMMIT
+
+============================================================
+16. WORKFLOW ANDROID WEBVIEW
+============================================================
+
+16.1 Tujuan
+
+Android app berfungsi sebagai wrapper WebView untuk membuka web resmi sistem, agar orang tua/siswa/guru/kepala sekolah lebih mudah mengakses dari HP.
+
+16.2 Manifest Pseudocode
+
+<manifest package="app.el_yaomy.finance">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <application
+        android:usesCleartextTraffic="false"
+        android:allowBackup="false"
+        android:label="El Yaomy"
+        android:theme="@style/AppTheme">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
+
+16.3 MainActivity Kotlin Pseudocode
+
+class MainActivity : AppCompatActivity() {
+    private lateinit var webView: WebView
+    private val appUrl = "https://sekolah.el-yaomy.sch.id"
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        webView = WebView(this)
+        setContentView(webView)
+        configureWebView()
+        configureNavigation()
+        webView.loadUrl(appUrl)
+    }
+
+    private fun configureWebView() {
+        val settings = webView.settings
+        settings.javaScriptEnabled = true
+        settings.domStorageEnabled = true
+        settings.allowFileAccess = false
+        settings.allowContentAccess = false
+        settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+        WebView.setWebContentsDebuggingEnabled(false)
+        CookieManager.getInstance().setAcceptCookie(true)
+        CookieManager.getInstance().setAcceptThirdPartyCookies(webView, false)
+    }
+
+    private fun configureNavigation() {
+        webView.webViewClient = object : WebViewClient() {
+            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+                val host = request.url.host ?: ""
+                return if (host == "sekolah.el-yaomy.sch.id") {
+                    false
+                } else {
+                    startActivity(Intent(Intent.ACTION_VIEW, request.url))
+                    true
+                }
+            }
+
+            override fun onReceivedSslError(view: WebView, handler: SslErrorHandler, error: SslError) {
+                handler.cancel()
+                showError("Koneksi tidak aman. Aplikasi diblokir.")
+            }
+        }
+
+        webView.webChromeClient = object : WebChromeClient() {
+            override fun onPermissionRequest(request: PermissionRequest) {
+                request.deny()
+            }
+        }
+    }
+}
+
+16.4 Aturan Aman Android
+
+- usesCleartextTraffic=false.
+- allowBackup=false.
+- Jangan bypass SSL error.
+- Jangan aktifkan file access.
+- Jangan pakai addJavascriptInterface kecuali perlu dan sudah diaudit.
+- External link dibuka di browser luar.
+- Debug WebView disabled untuk production.
+
+============================================================
+17. SECURITY PRIORITAS UTAMA
+============================================================
+
+17.1 Prinsip Security
+
+- Zero trust terhadap frontend dan PC client.
+- Semua input divalidasi di backend.
+- Semua akses objek dicek.
+- Semua transaksi uang idempotent.
+- Semua transaksi uang atomic dengan database transaction.
+- Semua saldo memakai row lock.
+- Semua event penting diaudit.
+- Semua file upload divalidasi.
+- Semua secret di environment/secret manager, bukan source code.
+
+17.2 Header Security
+
+Content-Security-Policy:
+  default-src 'self';
+  script-src 'self';
+  connect-src 'self' https://api.el-yaomy.sch.id;
+  img-src 'self' data: blob:;
+  style-src 'self' 'unsafe-inline';
+  frame-ancestors 'none';
+
+Strict-Transport-Security:
+  max-age=31536000; includeSubDomains; preload
+
+X-Content-Type-Options:
+  nosniff
+
+Referrer-Policy:
+  strict-origin-when-cross-origin
+
+Permissions-Policy:
+  camera=(), microphone=(), geolocation=(), usb=(self), serial=(self)
+
+17.3 Proteksi API
+
+- JWT access token pendek.
+- Refresh token HttpOnly Secure SameSite.
+- CSRF token untuk cookie-auth mutation.
+- Rate limit login, scan RFID, payment create, webhook.
+- Request body size limit.
+- Input validation Pydantic.
+- SQL injection dicegah dengan ORM/parameterized query.
+- Password Argon2id/bcrypt.
+- MFA untuk admin/bendahara.
+- Re-authentication untuk refund, void, top-up besar, adjustment saldo.
+
+17.4 Proteksi Payment
+
+- Webhook wajib signature/HMAC.
+- Webhook wajib idempotent.
+- Nominal harus cocok.
+- External transaction id unique.
+- Status pembayaran tidak boleh dari frontend.
+- Callback duplikat tidak boleh dobel posting.
+- Refund/void wajib approval dan audit.
+
+17.5 Proteksi RFID
+
+- UID disimpan sebagai HMAC, bukan plaintext.
+- Anti double scan.
+- Rate limit scan per terminal.
+- Kartu hilang bisa diblokir cepat.
+- Device/terminal harus terdaftar.
+- Device punya allowed_modules.
+- Reader kantin tidak boleh issue card/top-up jika tidak diberi izin.
+- UID-only hanya untuk nominal kecil.
+- DESFire direkomendasikan untuk keamanan lebih tinggi.
+
+17.6 Proteksi Database
+
+- User database app punya privilege minimal.
+- Tidak memakai superuser untuk aplikasi.
+- Backup terenkripsi.
+- Audit log append-only.
+- Transaction isolation cukup minimal READ COMMITTED + SELECT FOR UPDATE untuk saldo.
+- Constraint debit/credit non-negative.
+- Unique constraint pada idempotency key, external transaction id, receipt number.
+
+17.7 Proteksi File Upload
+
+- Whitelist mime type.
+- Scan extension dan magic bytes.
+- Rename file acak.
+- Simpan di object storage, bukan public web root langsung.
+- File private memakai signed URL.
+- Limit ukuran upload.
+
+17.8 Proteksi dari Hacker Umum
+
+Ancaman dan mitigasi:
+
+1. SQL Injection
+   - ORM/parameterized query.
+   - Jangan string concat SQL.
+
+2. XSS
+   - React escaping default.
+   - CSP ketat.
+   - Sanitize rich text.
+
+3. CSRF
+   - SameSite cookie.
+   - CSRF token untuk mutation.
+
+4. IDOR/BOLA
+   - Object-level authorization di setiap endpoint ID.
+
+5. Brute force login
+   - Rate limit.
+   - Lock akun sementara.
+   - MFA admin.
+
+6. Session hijacking
+   - HTTPS.
+   - HttpOnly Secure cookie.
+   - Short access token.
+
+7. Replay transaksi
+   - Idempotency key.
+   - Nonce untuk terminal signature.
+
+8. Manipulasi saldo
+   - Ledger immutable.
+   - Row lock.
+   - Reversal.
+   - Audit log.
+
+9. Webhook palsu
+   - HMAC signature.
+   - IP allowlist jika tersedia.
+   - Nominal matching.
+
+10. Client kasir disusupi
+    - Device scoping.
+    - Limit nominal.
+    - Audit.
+    - Tidak ada akses database.
+
+============================================================
+18. TERMINAL ENROLLMENT AMAN
+============================================================
+
+18.1 Tujuan
+
+Mendaftarkan PC kasir/admin agar server tahu terminal mana yang boleh menjalankan modul tertentu.
+
+18.2 Flow
+
+1. Super admin login di PC client.
+2. Buka menu Terminal.
+3. Klik Daftarkan PC Ini.
+4. Pilih lokasi dan modul.
+5. Browser membuat keypair Web Crypto non-extractable.
+6. Public key dikirim ke server.
+7. Private key disimpan di IndexedDB.
+8. Setiap request sensitif ditandatangani.
+
+Pseudocode frontend:
+
+FUNCTION enroll_terminal(admin, terminal_name, location, allowed_modules):
+    keypair = crypto.subtle.generateKey(ECDSA_P256, extractable=false, usages=['sign','verify'])
+    public_key = export_public_key(keypair.publicKey)
+    save_private_key_to_indexeddb(keypair.privateKey)
+    response = POST /api/terminals/enroll { terminal_name, location, allowed_modules, public_key }
+    save_terminal_id_to_indexeddb(response.terminal_id)
+
+FUNCTION send_secure_terminal_request(payload):
+    terminal_id = get_terminal_id()
+    private_key = get_private_key()
+    nonce = GET /api/terminals/nonce
+    signature = sign(private_key, hash(payload + nonce))
+    POST API with headers:
+        X-Terminal-Id
+        X-Terminal-Nonce
+        X-Terminal-Signature
+
+Pseudocode backend:
+
+FUNCTION verify_terminal_request(request):
+    terminal = get_terminal(request.header.X-Terminal-Id)
+    IF terminal.status != 'active':
+        REJECT
+    IF request.module not in terminal.allowed_modules:
+        REJECT
+    IF nonce_already_used(request.nonce):
+        REJECT
+    verify_signature(terminal.public_key, request.body + request.nonce, request.signature)
+    mark_nonce_used(request.nonce)
+
+============================================================
+19. LAPORAN DAN DASHBOARD
+============================================================
+
+19.1 Dashboard per Role
+
+Super Admin:
+- Total penerimaan semua unit.
+- Tunggakan semua unit.
+- Saldo kas/bank.
+- Grafik pembayaran.
+- Alert keamanan.
+
+Bendahara:
+- Penerimaan hari ini.
+- Pengeluaran hari ini.
+- Kas belum closing.
+- Payment pending.
+- Rekonsiliasi bank.
+
+Kepala Sekolah:
+- Tunggakan siswa.
+- Approval menunggu.
+- RAB vs realisasi.
+- Ringkasan unit.
+
+Orang Tua:
+- Tagihan anak.
+- Tombol bayar.
+- Saldo wallet/tabungan.
+- Riwayat kantin.
+- Limit jajan.
+- Blokir kartu.
+
+Kasir/Kantin:
+- Shift aktif.
+- Total transaksi shift.
+- Scan siswa.
+- Produk cepat.
+- Closing.
+
+19.2 Laporan Keuangan
+
+- Penerimaan harian.
+- Pengeluaran harian.
+- Buku kas.
+- Buku bank.
+- Buku besar.
+- Neraca saldo.
+- Neraca.
+- Laporan aktivitas/laba rugi internal.
+- Arus kas.
+- Piutang siswa.
+- Aging receivable.
+- Tunggakan per kelas.
+- Tabungan per kelas.
+- Wallet siswa.
+- Penjualan kantin.
+- RAB vs realisasi.
+- Inventaris.
+- Aset.
+- Audit trail.
+
+Pseudocode report:
+
+FUNCTION generate_report(user, report_type, filters):
+    authorize(user, 'report.view.' + report_type)
+    validate_filters(filters)
+    enforce_unit_scope(user, filters.unit_id)
+
+    data = query_report_data(report_type, filters)
+    result = transform_report(report_type, data)
+
+    IF filters.finalize:
+        snapshot = save_report_snapshot(result)
+        audit_log(user, 'report.finalize', snapshot.id)
+
+    RETURN result
+
+============================================================
+20. NOTIFIKASI
+============================================================
+
+Channel:
+
+- WhatsApp gateway.
+- Email.
+- Push notification Android/PWA.
+- In-app notification.
+
+Event:
+
+- Tagihan baru.
+- Reminder jatuh tempo.
+- Pembayaran sukses.
+- Top-up wallet.
+- Belanja kantin.
+- Kartu diblokir.
+- Approval diminta.
+- Approval disetujui/ditolak.
+- Closing kas selisih.
+- Stok minimum.
+
+Pseudocode:
+
+FUNCTION enqueue_notification(recipient, template_code, data):
+    notification = create_notification(recipient, template_code, data, status='queued')
+    worker_queue.push(notification.id)
+
+WORKER send_notification(notification_id):
+    notification = get_notification(notification_id)
+    rendered = render_template(notification.template_code, notification.data)
+    send_via_channel(notification.channel, rendered)
+    mark_sent_or_failed(notification)
+
+============================================================
+21. BACKUP, LOGGING, MONITORING
+============================================================
+
+21.1 Backup
+
+- Full backup PostgreSQL harian.
+- WAL/PITR jika memungkinkan.
+- Backup file storage harian.
+- Backup terenkripsi.
+- Simpan minimal 30 hari.
+- Uji restore berkala.
+
+Pseudocode backup:
+
+DAILY at 01:00:
+    pg_dump database -> encrypted file
+    upload to backup storage
+    verify checksum
+    write backup_log
+    delete backup older than retention
+
+21.2 Logging
+
+- Application log JSON.
+- Error log.
+- Security log.
+- Audit log bisnis.
+- Payment webhook log.
+- RFID scan log.
+
+21.3 Monitoring
+
+- Uptime API.
+- Disk usage.
+- CPU/RAM.
+- PostgreSQL connection.
+- Queue length.
+- Failed login spike.
+- Failed webhook spike.
+- Transaction error spike.
+
+============================================================
+22. DEPLOYMENT
+============================================================
+
+22.1 Environment
+
+development:
+- local docker compose.
+- dummy payment gateway.
+- dummy WhatsApp.
+
+staging:
+- data dummy mirip production.
+- test migration.
+- test security.
+
+production:
+- HTTPS valid.
+- backup aktif.
+- monitoring aktif.
+- secret aman.
+- debug off.
+
+22.2 Docker Compose Production Sederhana
+
+services:
+  postgres:
+    image: postgres:16
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: elyaomy
+      POSTGRES_USER: app_user
+      POSTGRES_PASSWORD: strong_password
+
+  redis:
+    image: redis:7
+
+  backend:
+    build: ./backend
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      DATABASE_URL: postgresql://app_user:strong_password@postgres:5432/elyaomy
+      REDIS_URL: redis://redis:6379
+
+  frontend:
+    build: ./frontend
+
+  nginx:
+    image: nginx:stable
+    ports:
+      - "443:443"
+    depends_on:
+      - backend
+      - frontend
+
+22.3 Checklist Go-Live
+
+- HTTPS aktif.
+- HSTS aktif.
+- Admin default diganti.
+- Password policy aktif.
+- Backup restore sudah diuji.
+- Payment webhook diuji.
+- Kasir closing diuji.
+- RFID scan diuji.
+- Kartu hilang/blokir diuji.
+- Role parent tidak bisa melihat anak orang lain.
+- Guru tidak bisa akses kelas lain.
+- Kasir tidak bisa void tanpa approval.
+- Jurnal debit kredit seimbang.
+- Error tidak menampilkan stack trace.
+
+============================================================
+23. ROADMAP IMPLEMENTASI BERTAHAP
+============================================================
+
+Tahap 1 - Fondasi Aman
+- Auth, role, permission.
+- Master unit, siswa, kelas, user.
+- Audit log.
+- PostgreSQL schema dasar.
+- Dashboard sederhana.
+
+Tahap 2 - Tagihan dan Pembayaran Manual
+- Billing types.
+- Generate invoice.
+- Pembayaran kasir.
+- Receipt.
+- Laporan penerimaan.
+- Jurnal dasar.
+
+Tahap 3 - Wallet/Tabungan
+- Wallet siswa.
+- Top-up.
+- Ledger.
+- Mutasi saldo.
+- Limit.
+- Notifikasi.
+
+Tahap 4 - RFID dan Kantin
+- Manajemen kartu.
+- Scan HID.
+- POS kantin.
+- Pembayaran wallet.
+- Closing kantin.
+- Laporan kantin.
+
+Tahap 5 - Online Payment
+- Payment intent.
+- VA/QRIS.
+- Webhook idempotent.
+- Rekonsiliasi.
+
+Tahap 6 - Akuntansi Lengkap
+- COA.
+- Jurnal otomatis.
+- Buku besar.
+- Neraca.
+- Arus kas.
+- Tutup buku.
+
+Tahap 7 - RAB, Inventaris, Aset
+- Budgeting.
+- Approval pengeluaran.
+- Inventaris.
+- Aset dan penyusutan.
+
+Tahap 8 - Android WebView dan PWA
+- Wrapper Android.
+- Push notification.
+- Parent app.
+
+============================================================
+24. CONTOH ENDPOINT API
+============================================================
+
+Auth:
+POST   /api/auth/login
+POST   /api/auth/refresh
+POST   /api/auth/logout
+POST   /api/auth/reauth
+GET    /api/auth/me
+
+Students:
+GET    /api/students
+POST   /api/students
+GET    /api/students/{id}
+PATCH  /api/students/{id}
+
+Billing:
+GET    /api/invoices
+POST   /api/invoices/generate-monthly
+GET    /api/invoices/{id}
+POST   /api/invoices/{id}/cancel
+
+Payments:
+POST   /api/payments/intents
+POST   /api/payments/webhooks/{provider}
+POST   /api/cashier/payments
+GET    /api/payments/{id}/receipt
+
+Wallet:
+GET    /api/wallets/{id}
+POST   /api/wallets/{id}/topup
+POST   /api/wallets/{id}/debit
+GET    /api/wallets/{id}/ledger
+
+RFID:
+POST   /api/rfid/scan
+POST   /api/rfid/cards/issue
+POST   /api/rfid/cards/{id}/block
+POST   /api/rfid/cards/{id}/replace
+GET    /api/rfid/cards
+
+Canteen:
+GET    /api/canteen/products
+POST   /api/canteen/orders
+POST   /api/canteen/orders/rfid-checkout
+POST   /api/canteen/sessions/open
+POST   /api/canteen/sessions/{id}/close
+
+Accounting:
+GET    /api/accounts
+POST   /api/journals
+POST   /api/journals/{id}/post
+GET    /api/reports/balance-sheet
+GET    /api/reports/cashflow
+GET    /api/reports/ledger
+
+Budget:
+GET    /api/budgets
+POST   /api/budgets
+POST   /api/expenses
+POST   /api/expenses/{id}/approve
+POST   /api/expenses/{id}/pay
+
+Admin:
+GET    /api/audit-logs
+GET    /api/security-events
+POST   /api/terminals/enroll
+POST   /api/terminals/{id}/block
+
+============================================================
+25. CHECKLIST SECURITY DEVELOPMENT
+============================================================
+
+Untuk setiap fitur baru, cek:
+
+[ ] Endpoint butuh login?
+[ ] Permission sudah dicek?
+[ ] Object-level authorization sudah dicek?
+[ ] Input validation lengkap?
+[ ] Nominal uang tidak bisa negatif?
+[ ] Ada idempotency untuk transaksi?
+[ ] Ada database transaction?
+[ ] Ada row lock jika mengubah saldo/stok?
+[ ] Ada audit log?
+[ ] Error tidak bocorkan data internal?
+[ ] Test role parent/guru/kasir sudah dibuat?
+[ ] Test concurrency saldo sudah dibuat?
+[ ] Test webhook duplikat sudah dibuat?
+[ ] Test kartu blocked/hilang sudah dibuat?
+[ ] Test SQL injection/XSS basic sudah dibuat?
+
+============================================================
+26. KESIMPULAN DESAIN
+============================================================
+
+Sistem ini harus dibangun sebagai platform keuangan sekolah yang aman, modular, dan audit-friendly. Bagian paling penting bukan tampilan atau fitur banyak, tetapi fondasi keamanan:
+
+1. Backend API menjadi satu-satunya pintu transaksi.
+2. PostgreSQL menyimpan ledger yang benar.
+3. RFID hanya identitas, bukan penyimpan saldo.
+4. Semua transaksi finansial menggunakan database transaction dan row lock.
+5. Semua perubahan penting memiliki audit trail.
+6. Role dan object-level authorization wajib diterapkan.
+7. UI dibuat sederhana agar semua role bisa menggunakan tanpa kebingungan.
+8. Implementasi dilakukan bertahap agar cepat dipakai tetapi tetap aman.
+
+Dokumen ini bisa menjadi blueprint awal untuk tim developer membuat database migration, backend service, frontend React, Android WebView, dan integrasi RFID secara bertahap.

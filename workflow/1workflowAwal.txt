@@ -1,0 +1,2363 @@
+Berikut rancangan **sistem keuangan terpadu Yayasan Pendidikan El Yaomy Klaten** berbasis **PostgreSQL**, siap untuk ribuan user, aman secara cybersecurity, dan modular. Saya anggap sistem ini dipakai oleh **admin yayasan, bendahara sekolah, kepala sekolah, wali kelas, guru/pegawai, siswa, orang tua/wali, kasir, petugas kantin, petugas gudang, dan auditor**.
+
+Riset fitur umum saya ambil dari pola aplikasi keuangan sekolah/pesantren yang umum di Indonesia: tagihan/SPP, pembayaran otomatis, VA/QRIS, tabungan digital, PPDB, e-kantin, POS/kasir, kartu siswa, notifikasi WhatsApp, serta laporan otomatis. Beberapa platform lokal juga menonjolkan integrasi pembayaran SPP, VA, e-kantin/e-mart, tabungan, dan cashless siswa. ([School Payment App][1]) Untuk keamanan, desain ini mengikuti prinsip OWASP ASVS/API Security: autentikasi kuat, kontrol akses per objek, validasi input, logging, kriptografi, session security, dan perlindungan data pribadi. ([OWASP][2]) Untuk pembayaran Indonesia, integrasi sebaiknya mengikuti pola payment gateway/VA/QRIS dan standar Open API pembayaran seperti SNAP yang diarahkan untuk interoperabilitas dan infrastruktur pembayaran yang aman/reliable. ([Bank Indonesia][3])
+
+---
+
+# 1. Gambaran Besar Sistem
+
+Nama sistem yang cocok:
+
+**El Yaomy Finance & Digital School Platform**
+
+Tujuan utama:
+
+1. Semua transaksi siswa, pegawai, kantin, aset, kas, jurnal, anggaran, dan laporan masuk ke satu sistem.
+2. Setiap pembayaran otomatis membentuk jurnal akuntansi.
+3. Setiap transaksi punya jejak audit.
+4. Orang tua bisa melihat tagihan, riwayat bayar, saldo tabungan, e-kantin, dan notifikasi.
+5. Bendahara bisa menutup kas harian, rekonsiliasi bank, membuat laporan keuangan, neraca, laba-rugi/aktivitas, arus kas, dan RAB.
+6. Sistem siap multi-unit, misalnya TK, SD, SMP, SMA, pondok, atau unit usaha yayasan.
+
+---
+
+# 2. Role / Hak Akses
+
+Minimal role:
+
+| Role                | Hak Utama                                                            |
+| ------------------- | -------------------------------------------------------------------- |
+| Super Admin Yayasan | Kelola semua unit, user, master data, konfigurasi sistem             |
+| Admin Unit Sekolah  | Kelola data siswa, kelas, pegawai, tagihan unit                      |
+| Bendahara Yayasan   | Konsolidasi laporan semua unit, jurnal, kas, bank, RAB               |
+| Bendahara Unit      | Tagihan, pembayaran, jurnal unit, laporan unit                       |
+| Kepala Sekolah      | Lihat dashboard, approval RAB, laporan, tunggakan                    |
+| Wali Kelas          | Lihat tagihan siswa kelasnya, tabungan kelas, laporan siswa          |
+| Guru/Pegawai        | Lihat saldo tabungan pegawai, transaksi pribadi, gaji/honor bila ada |
+| Kasir Sekolah       | Terima pembayaran tunai/non-tunai, cetak struk                       |
+| Petugas Kantin      | POS e-kantin, stok, penjualan                                        |
+| Petugas Gudang/Aset | Inventaris, mutasi aset, opname                                      |
+| Orang Tua/Wali      | Lihat tagihan anak, bayar online, saldo, riwayat                     |
+| Siswa               | Lihat saldo dompet/tabungan, histori belanja, batas transaksi        |
+| Auditor             | Read-only laporan, jurnal, audit trail                               |
+
+Prinsip keamanan: jangan hanya cek role, tetapi juga cek **object-level authorization**. Misalnya orang tua hanya boleh melihat invoice anaknya sendiri, wali kelas hanya kelasnya, bendahara unit hanya unitnya. OWASP API Security menekankan setiap endpoint yang menerima ID objek harus memvalidasi izin user atas objek itu. ([OWASP][4])
+
+---
+
+# 3. Modul Detail
+
+## A. Tagihan Siswa
+
+Fungsi utama:
+
+1. Master jenis tagihan:
+
+   * SPP bulanan
+   * Daftar ulang
+   * Uang gedung
+   * Seragam
+   * Buku/LKS
+   * Kegiatan
+   * Ujian
+   * Ekstrakurikuler
+   * Catering
+   * Asrama/pondok
+   * Denda keterlambatan
+   * Donasi/infaq/sedekah
+   * Tagihan khusus per siswa
+
+2. Generate tagihan:
+
+   * Per kelas
+   * Per angkatan
+   * Per unit sekolah
+   * Per siswa
+   * Per program beasiswa
+   * Per periode bulan/tahun
+   * Sekali bayar atau cicilan
+   * Tagihan berulang otomatis
+
+3. Diskon dan beasiswa:
+
+   * Diskon nominal
+   * Diskon persentase
+   * Subsidi yayasan
+   * Keringanan per siswa
+   * Gratis SPP sementara
+   * Approval keringanan oleh kepala sekolah/yayasan
+
+4. Status tagihan:
+
+   * Draft
+   * Published
+   * Partially paid
+   * Paid
+   * Overdue
+   * Cancelled
+   * Written off / dihapus buku
+
+5. Notifikasi:
+
+   * WhatsApp tagihan baru
+   * Reminder jatuh tempo
+   * Reminder tunggakan
+   * Bukti pembayaran otomatis
+   * Notifikasi ke wali kelas untuk siswa menunggak
+
+6. Laporan:
+
+   * Daftar tagihan per kelas
+   * Tunggakan per siswa
+   * Aging receivable: 0–30, 31–60, 61–90, >90 hari
+   * Rekap penerimaan per jenis tagihan
+   * Rasio pembayaran per unit
+
+Pseudo-flow:
+
+```text
+GENERATE_TAGIHAN_BULANAN(unit_id, periode):
+    ambil semua siswa aktif di unit
+    ambil aturan SPP berdasarkan kelas/program
+    untuk setiap siswa:
+        cek apakah sudah ada tagihan periode ini
+        jika belum:
+            hitung nominal dasar
+            hitung diskon/beasiswa
+            buat invoice
+            buat invoice_item
+            set status = published
+            kirim notifikasi ke wali
+```
+
+---
+
+## B. Tabungan Siswa, Kelas & Pegawai
+
+Modul ini bukan sekadar saldo, tetapi harus berbasis **ledger**, supaya aman dan tidak mudah dimanipulasi.
+
+Jenis rekening:
+
+1. Tabungan siswa pribadi
+2. Tabungan kelas
+3. Tabungan pegawai
+4. Tabungan kegiatan
+5. Tabungan koperasi/kantin bila diperlukan
+
+Fitur:
+
+1. Setor tunai
+2. Setor transfer
+3. Tarik tunai
+4. Transfer antar tabungan
+5. Potong saldo untuk pembayaran SPP
+6. Potong saldo untuk e-kantin
+7. Batas tarik harian
+8. Approval penarikan besar
+9. Rekening dibekukan
+10. Mutasi saldo
+11. Buku tabungan digital
+12. Cetak kartu tabungan
+13. Rekap saldo per kelas
+14. Rekap saldo per pegawai
+15. Rekonsiliasi saldo sistem vs kas fisik/bank
+
+Prinsip penting:
+
+* Jangan simpan saldo hanya satu angka tanpa histori.
+* Saldo boleh disimpan sebagai cache, tetapi sumber kebenaran tetap dari tabel ledger.
+* Semua transaksi debit/kredit harus immutable.
+* Koreksi harus pakai transaksi reversal, bukan edit transaksi lama.
+
+Pseudo-flow:
+
+```text
+SETOR_TABUNGAN(account_id, amount, cashier_id):
+    validasi account aktif
+    validasi amount > 0
+    mulai database transaction
+        buat savings_transaction tipe deposit
+        buat ledger_entry kredit ke akun tabungan siswa
+        buat ledger_entry debit ke kas/bank
+        update cached_balance
+        buat audit_log
+    commit
+    cetak/kirim bukti setor
+```
+
+---
+
+## C. Pembayaran SPP Online
+
+Metode pembayaran:
+
+1. Virtual Account bank
+2. QRIS
+3. Transfer manual
+4. E-wallet via payment gateway
+5. Bayar tunai di kasir
+6. Potong tabungan/dompet digital
+7. Cicilan
+8. Partial payment
+9. Multi-invoice payment
+
+Fitur wajib:
+
+1. Generate kode pembayaran unik
+2. Payment link
+3. QRIS dinamis
+4. Callback/webhook dari payment gateway
+5. Verifikasi signature callback
+6. Idempotency key agar callback ganda tidak dobel bayar
+7. Rekonsiliasi otomatis
+8. Rekonsiliasi manual
+9. Refund
+10. Void/cancel payment
+11. Bukti bayar PDF/WhatsApp
+12. Auto-posting jurnal
+13. Dashboard pembayaran realtime
+
+Alur payment gateway:
+
+```text
+CREATE_ONLINE_PAYMENT(parent_id, invoice_ids, method):
+    validasi invoice milik anak dari parent_id
+    hitung total unpaid
+    buat payment_intent status=pending
+    request VA/QRIS/payment_url ke gateway
+    simpan external_reference
+    kembalikan instruksi pembayaran ke frontend
+```
+
+Webhook:
+
+```text
+PAYMENT_WEBHOOK(payload, signature):
+    verifikasi signature
+    cek idempotency external_transaction_id
+    jika sudah diproses:
+        return success
+    mulai database transaction
+        cari payment_intent
+        validasi amount cocok
+        ubah status payment_intent = paid
+        buat payment
+        alokasikan pembayaran ke invoice_items
+        update invoice status
+        buat jurnal:
+            debit bank/payment clearing
+            kredit piutang siswa / pendapatan diterima dimuka / pendapatan
+        buat audit_log
+    commit
+    kirim notifikasi bukti bayar
+```
+
+Catatan keamanan pembayaran:
+
+* Jangan percaya status pembayaran dari frontend.
+* Status sah hanya dari callback gateway atau hasil inquiry resmi.
+* Callback harus pakai signature/HMAC.
+* Wajib idempotent.
+* Nominal harus dicocokkan.
+* Rekening tujuan harus milik yayasan/unit.
+
+---
+
+## D. Manajemen Keuangan
+
+Modul ini menjadi pusat kas, bank, penerimaan, pengeluaran, dan approval.
+
+Fitur:
+
+1. Master akun kas/bank:
+
+   * Kas utama yayasan
+   * Kas unit sekolah
+   * Kas kantin
+   * Bank BRI/BNI/BSI/dll
+   * Payment gateway clearing
+   * Dompet digital clearing
+
+2. Penerimaan:
+
+   * SPP
+   * Tabungan
+   * Kantin
+   * Donasi
+   * Bantuan pemerintah
+   * Koperasi
+   * Pendapatan lain-lain
+
+3. Pengeluaran:
+
+   * Gaji/honor
+   * Operasional
+   * Pembelian barang
+   * ATK
+   * Perawatan aset
+   * Kegiatan siswa
+   * Transport
+   * Konsumsi
+   * Pembayaran vendor
+
+4. Approval workflow:
+
+   * Draft pengeluaran
+   * Verifikasi bendahara
+   * Approval kepala sekolah
+   * Approval yayasan jika nominal besar
+   * Paid
+   * Rejected
+
+5. Kas kecil:
+
+   * Imprest fund
+   * Reimburse
+   * Settlement
+   * Bukti nota/foto
+   * Closing harian
+
+6. Rekonsiliasi bank:
+
+   * Upload mutasi CSV
+   * Auto-match berdasarkan nominal, tanggal, referensi
+   * Manual match
+   * Selisih bank
+   * Biaya admin bank
+
+7. Tutup buku:
+
+   * Closing harian kasir
+   * Closing bulanan
+   * Lock periode akuntansi
+   * Reopen hanya oleh role tertentu
+
+Pseudo-flow approval:
+
+```text
+REQUEST_EXPENSE(user, amount, category, attachment):
+    buat expense_request status=draft
+    submit -> status=waiting_verification
+    bendahara verifikasi
+    jika amount <= limit_kepsek:
+        approval kepala sekolah
+    jika amount > limit_kepsek:
+        approval kepala sekolah + yayasan
+    setelah approved:
+        kasir/bendahara bayar
+        sistem buat jurnal pengeluaran
+```
+
+---
+
+## E. Inventaris & Aset / Manajemen Aset
+
+Karena daftar Anda menyebut **Inventaris & Aset** dan **Manajemen Aset**, saya gabungkan tetapi bisa dipisah:
+
+* **Inventaris**: barang habis pakai dan stok.
+* **Aset tetap**: barang bernilai dan umur manfaat panjang.
+
+### Inventaris
+
+Fitur:
+
+1. Master barang
+2. Kategori barang
+3. Satuan
+4. Stok masuk
+5. Stok keluar
+6. Permintaan barang oleh unit
+7. Approval pengeluaran barang
+8. Minimum stock alert
+9. Stock opname
+10. Kartu stok
+11. Barang rusak/hilang
+12. Mutasi antar gudang/unit
+
+Contoh barang:
+
+* ATK
+* Buku
+* Seragam
+* Peralatan kebersihan
+* Konsumsi
+* Bahan kantin
+* Alat praktik
+
+### Aset tetap
+
+Fitur:
+
+1. Register aset
+2. Nomor aset/barcode/QR code
+3. Lokasi aset
+4. Penanggung jawab
+5. Nilai perolehan
+6. Tanggal perolehan
+7. Sumber dana
+8. Foto aset
+9. Dokumen pembelian
+10. Penyusutan
+11. Mutasi aset
+12. Perawatan aset
+13. Peminjaman aset
+14. Penghapusan aset
+15. Aset hilang/rusak
+16. Audit/opname aset
+
+Kategori aset:
+
+* Tanah
+* Bangunan
+* Kendaraan
+* Komputer/laptop
+* Proyektor
+* Meja/kursi
+* AC/kipas
+* Peralatan laboratorium
+* Peralatan olahraga
+* Peralatan dapur/kantin
+
+Pseudo-flow penyusutan:
+
+```text
+RUN_MONTHLY_DEPRECIATION(period):
+    ambil semua aset aktif dan depreciable
+    untuk setiap aset:
+        hitung depresiasi bulan ini
+        jika belum pernah diposting periode ini:
+            buat depreciation_record
+            buat jurnal:
+                debit beban penyusutan
+                kredit akumulasi penyusutan
+```
+
+---
+
+## F. Kasir Sekolah
+
+Fitur kasir:
+
+1. Login kasir per shift
+2. Buka kas
+3. Terima pembayaran:
+
+   * SPP
+   * Buku
+   * Seragam
+   * Kegiatan
+   * Tabungan
+   * Kantin
+   * Donasi
+4. Scan barcode siswa
+5. Cari siswa by NIS/NISN/nama
+6. Cetak struk
+7. Kirim bukti WA
+8. Refund terbatas
+9. Void transaksi dengan approval
+10. Closing kasir
+11. Laporan shift
+12. Rekap tunai/non-tunai
+13. Selisih kas
+14. Audit transaksi kasir
+
+Keamanan kasir:
+
+* Kasir tidak boleh menghapus transaksi.
+* Void butuh alasan dan approval.
+* Setiap struk punya nomor unik.
+* Closing kasir harus mencatat uang fisik.
+* Selisih harus masuk laporan.
+
+Pseudo-flow:
+
+```text
+CASHIER_PAYMENT(cashier_id, student_id, invoice_ids, amount, method):
+    cek shift kasir aktif
+    validasi invoice
+    mulai transaction
+        buat payment
+        alokasikan ke invoice
+        buat cash_movement
+        buat journal_entry
+        buat receipt_number
+        audit_log
+    commit
+    print receipt
+```
+
+---
+
+## G. Jurnal
+
+Jurnal adalah inti akuntansi.
+
+Fitur:
+
+1. Chart of Accounts / COA
+2. Jurnal otomatis dari transaksi
+3. Jurnal manual
+4. Jurnal penyesuaian
+5. Jurnal pembalik
+6. Jurnal penyusutan
+7. Jurnal koreksi
+8. Approval jurnal manual
+9. Posting/unposting
+10. Lock periode
+11. Lampiran bukti
+12. Audit jurnal
+
+Aturan:
+
+* Total debit harus sama dengan total kredit.
+* Jurnal yang sudah posted tidak boleh diedit.
+* Koreksi menggunakan reversal.
+* Jurnal otomatis harus menyimpan source module dan source transaction ID.
+
+Contoh jurnal:
+
+Pembayaran SPP tunai:
+
+```text
+Debit  Kas Sekolah                 500.000
+Kredit Piutang SPP                 500.000
+```
+
+Generate tagihan SPP:
+
+```text
+Debit  Piutang SPP                 500.000
+Kredit Pendapatan SPP              500.000
+```
+
+Atau bila sekolah memakai basis kas, pendapatan diakui saat bayar. Pilihan basis akuntansi harus ditentukan sejak awal.
+
+Pseudo-validasi jurnal:
+
+```text
+POST_JOURNAL(journal_id):
+    ambil semua journal_lines
+    total_debit = sum(debit)
+    total_credit = sum(credit)
+    jika total_debit != total_credit:
+        reject
+    jika period locked:
+        reject
+    set status = posted
+    update general ledger
+```
+
+---
+
+## H. Neraca
+
+Neraca dihasilkan dari jurnal/ledger.
+
+Fitur:
+
+1. Neraca per tanggal
+2. Neraca per unit
+3. Neraca konsolidasi yayasan
+4. Drill-down ke akun
+5. Drill-down ke jurnal
+6. Perbandingan periode
+7. Export PDF/Excel
+8. Validasi persamaan:
+
+   * Aset = Kewajiban + Ekuitas/Dana
+
+Komponen:
+
+Aset:
+
+* Kas
+* Bank
+* Piutang siswa
+* Persediaan
+* Aset tetap
+* Akumulasi penyusutan
+
+Kewajiban:
+
+* Utang vendor
+* Titipan tabungan siswa
+* Pendapatan diterima dimuka
+* Utang gaji/honor
+
+Ekuitas/Dana:
+
+* Dana yayasan
+* Saldo awal
+* Surplus/defisit berjalan
+
+Pseudo:
+
+```text
+GENERATE_BALANCE_SHEET(unit_id, as_of_date):
+    ambil saldo semua akun sampai as_of_date
+    kelompokkan berdasarkan account_type
+    aset = sum(asset accounts)
+    liabilitas = sum(liability accounts)
+    ekuitas = sum(equity accounts) + surplus_defisit
+    validasi aset == liabilitas + ekuitas
+    tampilkan laporan
+```
+
+---
+
+## I. Laporan Keuangan
+
+Laporan wajib:
+
+1. Laporan penerimaan harian
+2. Laporan pengeluaran harian
+3. Laporan kas/bank
+4. Buku besar
+5. Neraca saldo
+6. Neraca
+7. Laporan aktivitas / laba-rugi internal
+8. Arus kas
+9. Piutang siswa
+10. Tunggakan SPP
+11. Laporan tabungan
+12. Laporan kantin
+13. Laporan inventaris
+14. Laporan aset
+15. Laporan RAB vs realisasi
+16. Laporan per unit
+17. Laporan konsolidasi yayasan
+
+Fitur tambahan:
+
+* Filter unit, tahun ajaran, periode, kelas, jenis pembayaran
+* Export Excel/PDF
+* Jadwal laporan otomatis
+* Approval laporan bulanan
+* Catatan laporan
+* Dashboard grafik
+* Drill-down dari angka laporan ke transaksi sumber
+
+Pseudo:
+
+```text
+GENERATE_FINANCIAL_REPORT(report_type, filters):
+    validasi akses user terhadap unit
+    ambil data dari ledger/journal
+    transform sesuai format laporan
+    hitung subtotal dan total
+    simpan snapshot jika laporan final
+    return report_view
+```
+
+---
+
+## J. RAB Sekolah
+
+RAB = Rencana Anggaran Biaya.
+
+Fitur:
+
+1. RAB tahunan
+2. RAB semester
+3. RAB kegiatan
+4. RAB per unit
+5. RAB per departemen
+6. RAB per akun COA
+7. RAB per sumber dana
+8. Draft, submit, revisi, approve
+9. Realisasi otomatis dari transaksi
+10. Sisa anggaran
+11. Blokir pengeluaran jika melewati anggaran
+12. Budget transfer antar pos
+13. Riwayat revisi
+14. Lampiran proposal
+15. Komentar approval
+
+Status RAB:
+
+* Draft
+* Submitted
+* Need revision
+* Approved
+* Active
+* Closed
+* Rejected
+
+Pseudo:
+
+```text
+CHECK_BUDGET_BEFORE_EXPENSE(unit_id, account_id, amount, period):
+    budget = ambil budget aktif
+    realized = sum pengeluaran posted
+    remaining = budget - realized
+    jika amount > remaining dan policy = strict:
+        reject
+    jika amount > remaining dan policy = approval:
+        minta approval yayasan
+```
+
+---
+
+## K. E-Kantin
+
+Fitur utama e-kantin:
+
+1. POS kantin
+2. Menu makanan/minuman
+3. Harga per menu
+4. Stok bahan/menu
+5. Scan kartu siswa / QR siswa
+6. Pembayaran cashless dari dompet/tabungan
+7. Pembayaran tunai
+8. Limit belanja harian siswa
+9. Larangan item tertentu per siswa
+10. Refund transaksi
+11. Void transaksi dengan approval
+12. Closing kasir kantin
+13. Laporan penjualan
+14. Laporan margin
+15. Laporan menu terlaris
+16. Integrasi inventaris bahan
+17. Integrasi jurnal otomatis
+18. Notifikasi orang tua atas belanja anak
+
+Platform canteen management umum biasanya mencakup menu planning, POS checkout, inventory, billing, integrasi akun siswa/orang tua, dan laporan penjualan real-time. ([OpenEduCat][5])
+
+Pseudo-flow:
+
+```text
+CANTEEN_CHECKOUT(student_id, cart_items):
+    hitung total
+    cek saldo dompet/tabungan
+    cek limit harian
+    cek item restriction
+    mulai transaction
+        kurangi saldo dompet
+        buat canteen_order
+        buat canteen_order_items
+        kurangi stok
+        buat jurnal:
+            debit dompet/titipan siswa
+            kredit pendapatan kantin
+        audit_log
+    commit
+    kirim notifikasi ke wali
+```
+
+---
+
+## L. Dompet Digital
+
+Dompet digital bisa dipakai untuk:
+
+1. Bayar kantin
+2. Bayar koperasi
+3. Bayar SPP
+4. Bayar kegiatan
+5. Uang saku siswa
+6. Refund
+7. Transfer antar akun, jika diizinkan
+8. Top-up dari orang tua
+9. Top-up tunai di kasir
+10. Tarik saldo, dengan approval
+
+Catatan penting:
+
+* Secara regulasi, jangan memposisikan sistem yayasan sebagai e-money publik.
+* Buat sebagai **saldo internal tertutup** hanya untuk lingkungan yayasan.
+* Pisahkan saldo dompet dari pendapatan sekolah.
+* Saldo siswa adalah kewajiban/titipan, bukan pendapatan.
+
+Fitur keamanan:
+
+1. PIN transaksi siswa
+2. Limit harian
+3. Limit per transaksi
+4. Blokir kartu hilang
+5. Freeze wallet
+6. Device binding untuk aplikasi wali
+7. OTP untuk top-up besar
+8. Notifikasi realtime
+9. Ledger immutable
+10. Rekonsiliasi saldo
+
+Pseudo:
+
+```text
+WALLET_DEBIT(wallet_id, amount, purpose):
+    cek wallet aktif
+    cek amount <= balance
+    cek limit transaksi
+    cek risk rule
+    mulai transaction
+        insert wallet_ledger debit
+        update wallet balance cache
+        create source transaction
+        audit_log
+    commit
+```
+
+---
+
+# 4. Desain PostgreSQL
+
+## 4.1 Prinsip Desain Database
+
+Untuk Yayasan El Yaomy, saya sarankan:
+
+**Single PostgreSQL cluster, shared schema, semua tabel punya `tenant_id` / `foundation_id` / `unit_id`, ditambah Row Level Security untuk proteksi data.**
+
+Alasannya:
+
+* Lebih mudah dikembangkan untuk satu yayasan dengan banyak unit.
+* Tetap bisa konsolidasi laporan.
+* Lebih mudah backup.
+* Bisa ditingkatkan ke partitioning saat data besar.
+* Multi-tenant model dengan shared tables memang umum, tetapi harus disiplin memakai tenant key dan proteksi query; alternatifnya schema-per-tenant lebih terisolasi tetapi migrasi lebih rumit. ([MonPG][6])
+
+Gunakan:
+
+* UUID primary key
+* `created_at`, `updated_at`, `deleted_at`
+* `created_by`, `updated_by`
+* Soft delete untuk master data
+* Hard delete hanya untuk data sementara
+* Audit log untuk semua aksi penting
+* Financial transaction harus append-only
+* Money pakai `BIGINT` dalam rupiah, bukan float
+* Gunakan `NUMERIC(18,2)` hanya jika butuh desimal
+* Index semua foreign key
+* Partial index untuk status aktif/pending
+* Partition untuk tabel transaksi besar
+
+---
+
+## 4.2 Core Tables
+
+### `foundations`
+
+```text
+foundations
+- id uuid pk
+- name
+- legal_name
+- address
+- phone
+- email
+- tax_number
+- logo_url
+- status
+- created_at
+```
+
+### `school_units`
+
+```text
+school_units
+- id uuid pk
+- foundation_id fk
+- code
+- name
+- level: TK/SD/SMP/SMA/SMK/PONDOK/LAINNYA
+- address
+- principal_user_id
+- status
+```
+
+### `academic_years`
+
+```text
+academic_years
+- id uuid pk
+- foundation_id fk
+- name
+- start_date
+- end_date
+- is_active
+```
+
+### `classes`
+
+```text
+classes
+- id uuid pk
+- unit_id fk
+- academic_year_id fk
+- name
+- grade_level
+- homeroom_teacher_id
+- status
+```
+
+### `students`
+
+```text
+students
+- id uuid pk
+- unit_id fk
+- class_id fk
+- nis
+- nisn
+- full_name
+- gender
+- birth_place
+- birth_date
+- address
+- guardian_name
+- guardian_phone
+- guardian_email
+- enrollment_status
+- admission_date
+- graduation_date
+```
+
+### `employees`
+
+```text
+employees
+- id uuid pk
+- unit_id fk nullable
+- employee_no
+- full_name
+- position
+- phone
+- email
+- employment_status
+- active_status
+```
+
+### `users`
+
+```text
+users
+- id uuid pk
+- foundation_id fk
+- email unique
+- phone unique
+- password_hash
+- mfa_enabled
+- status
+- last_login_at
+- failed_login_count
+- locked_until
+```
+
+### `user_profiles`
+
+```text
+user_profiles
+- user_id fk
+- student_id nullable
+- employee_id nullable
+- guardian_of_student_id nullable
+```
+
+### `roles`, `permissions`, `user_roles`
+
+```text
+roles
+- id
+- foundation_id
+- name
+
+permissions
+- id
+- code
+- description
+
+role_permissions
+- role_id
+- permission_id
+
+user_roles
+- user_id
+- role_id
+- unit_id nullable
+- class_id nullable
+```
+
+---
+
+# 5. Database Modul Tagihan & Pembayaran
+
+### `billing_types`
+
+```text
+billing_types
+- id uuid pk
+- foundation_id fk
+- code
+- name
+- default_account_receivable_id
+- default_revenue_account_id
+- is_recurring
+- status
+```
+
+### `billing_rules`
+
+```text
+billing_rules
+- id uuid pk
+- unit_id fk
+- billing_type_id fk
+- academic_year_id fk
+- class_id nullable
+- grade_level nullable
+- amount bigint
+- recurrence: monthly/once/semester/yearly
+- due_day
+- start_period
+- end_period
+- status
+```
+
+### `invoices`
+
+```text
+invoices
+- id uuid pk
+- unit_id fk
+- student_id fk
+- invoice_number unique
+- academic_year_id fk
+- period_month
+- period_year
+- issue_date
+- due_date
+- subtotal_amount bigint
+- discount_amount bigint
+- penalty_amount bigint
+- total_amount bigint
+- paid_amount bigint
+- outstanding_amount bigint
+- status: draft/published/partial/paid/overdue/cancelled/write_off
+- posted_journal_id nullable
+```
+
+### `invoice_items`
+
+```text
+invoice_items
+- id uuid pk
+- invoice_id fk
+- billing_type_id fk
+- description
+- amount bigint
+- discount_amount bigint
+- penalty_amount bigint
+- net_amount bigint
+- paid_amount bigint
+- status
+```
+
+### `payment_intents`
+
+```text
+payment_intents
+- id uuid pk
+- unit_id fk
+- payer_user_id fk nullable
+- student_id fk
+- method: VA/QRIS/EWALLET/TRANSFER/TABUNGAN/TUNAI
+- provider
+- external_reference
+- payment_code
+- amount bigint
+- admin_fee bigint
+- expired_at
+- status: pending/paid/expired/failed/cancelled
+- idempotency_key unique
+```
+
+### `payments`
+
+```text
+payments
+- id uuid pk
+- unit_id fk
+- payment_number unique
+- student_id fk nullable
+- payer_name
+- method
+- provider
+- external_transaction_id unique nullable
+- amount bigint
+- admin_fee bigint
+- paid_at
+- cashier_user_id nullable
+- status: success/refunded/voided
+- journal_id fk nullable
+```
+
+### `payment_allocations`
+
+```text
+payment_allocations
+- id uuid pk
+- payment_id fk
+- invoice_id fk
+- invoice_item_id fk nullable
+- amount bigint
+```
+
+---
+
+# 6. Database Tabungan & Dompet Digital
+
+### `financial_accounts`
+
+Satu tabel umum untuk tabungan/dompet.
+
+```text
+financial_accounts
+- id uuid pk
+- unit_id fk
+- owner_type: student/employee/class/unit
+- owner_id uuid
+- account_type: savings/wallet/class_savings/employee_savings
+- account_number unique
+- name
+- cached_balance bigint
+- status: active/frozen/closed
+- daily_limit bigint
+```
+
+### `account_ledger`
+
+```text
+account_ledger
+- id uuid pk
+- account_id fk
+- transaction_type: deposit/withdraw/transfer/payment/canteen/refund/adjustment
+- direction: debit/credit
+- amount bigint
+- balance_after bigint
+- source_type
+- source_id
+- description
+- created_by
+- created_at
+```
+
+### `account_transfers`
+
+```text
+account_transfers
+- id uuid pk
+- from_account_id fk
+- to_account_id fk
+- amount bigint
+- status
+- approved_by nullable
+```
+
+---
+
+# 7. Database Kasir & E-Kantin
+
+### `cashier_sessions`
+
+```text
+cashier_sessions
+- id uuid pk
+- unit_id fk
+- cashier_user_id fk
+- location_type: school/canteen
+- opened_at
+- opening_cash bigint
+- closed_at
+- closing_cash_system bigint
+- closing_cash_actual bigint
+- difference_amount bigint
+- status
+```
+
+### `cash_movements`
+
+```text
+cash_movements
+- id uuid pk
+- session_id fk
+- movement_type: in/out/refund/void/adjustment
+- source_type
+- source_id
+- amount bigint
+- method: cash/qris/va/wallet
+- description
+```
+
+### `canteen_products`
+
+```text
+canteen_products
+- id uuid pk
+- unit_id fk
+- sku
+- name
+- category_id
+- selling_price bigint
+- cost_price bigint
+- stock_tracking_enabled
+- status
+```
+
+### `canteen_orders`
+
+```text
+canteen_orders
+- id uuid pk
+- unit_id fk
+- order_number unique
+- student_id nullable
+- cashier_user_id fk
+- session_id fk
+- subtotal bigint
+- discount bigint
+- total bigint
+- payment_method
+- status: paid/void/refunded
+- journal_id nullable
+```
+
+### `canteen_order_items`
+
+```text
+canteen_order_items
+- id uuid pk
+- order_id fk
+- product_id fk
+- qty numeric
+- price bigint
+- total bigint
+```
+
+### `student_spending_limits`
+
+```text
+student_spending_limits
+- id uuid pk
+- student_id fk
+- daily_limit bigint
+- weekly_limit bigint
+- blocked_categories jsonb
+- active
+```
+
+---
+
+# 8. Database Inventaris & Aset
+
+### `inventory_items`
+
+```text
+inventory_items
+- id uuid pk
+- unit_id fk
+- sku
+- name
+- category_id
+- unit_of_measure
+- minimum_stock
+- status
+```
+
+### `inventory_locations`
+
+```text
+inventory_locations
+- id uuid pk
+- unit_id fk
+- name
+- type: warehouse/classroom/canteen/office
+```
+
+### `inventory_stock`
+
+```text
+inventory_stock
+- item_id fk
+- location_id fk
+- qty_on_hand numeric
+```
+
+### `inventory_movements`
+
+```text
+inventory_movements
+- id uuid pk
+- item_id fk
+- from_location_id nullable
+- to_location_id nullable
+- movement_type: purchase/issue/transfer/opname/damage/loss/return
+- qty numeric
+- unit_cost bigint
+- source_type
+- source_id
+- created_by
+```
+
+### `assets`
+
+```text
+assets
+- id uuid pk
+- unit_id fk
+- asset_code unique
+- name
+- category_id
+- location_id
+- responsible_employee_id nullable
+- acquisition_date
+- acquisition_cost bigint
+- useful_life_months
+- depreciation_method: straight_line/none
+- accumulated_depreciation bigint
+- book_value bigint
+- condition: good/damaged/lost/disposed
+- status: active/maintenance/disposed
+- photo_url
+```
+
+### `asset_movements`
+
+```text
+asset_movements
+- id uuid pk
+- asset_id fk
+- from_location_id
+- to_location_id
+- from_responsible_id
+- to_responsible_id
+- movement_date
+- reason
+```
+
+### `asset_maintenance`
+
+```text
+asset_maintenance
+- id uuid pk
+- asset_id fk
+- maintenance_date
+- vendor_id nullable
+- cost bigint
+- description
+- status
+```
+
+### `asset_depreciations`
+
+```text
+asset_depreciations
+- id uuid pk
+- asset_id fk
+- period_month
+- period_year
+- amount bigint
+- journal_id fk
+```
+
+---
+
+# 9. Database Akuntansi
+
+### `chart_of_accounts`
+
+```text
+chart_of_accounts
+- id uuid pk
+- foundation_id fk
+- code
+- name
+- account_type: asset/liability/equity/revenue/expense
+- parent_id nullable
+- normal_balance: debit/credit
+- is_cash_account boolean
+- is_active boolean
+```
+
+### `accounting_periods`
+
+```text
+accounting_periods
+- id uuid pk
+- foundation_id fk
+- period_month
+- period_year
+- start_date
+- end_date
+- status: open/locked/closed
+```
+
+### `journal_entries`
+
+```text
+journal_entries
+- id uuid pk
+- unit_id fk
+- journal_number unique
+- journal_date
+- description
+- source_module
+- source_id
+- status: draft/posted/reversed
+- posted_by
+- posted_at
+- reversed_journal_id nullable
+```
+
+### `journal_lines`
+
+```text
+journal_lines
+- id uuid pk
+- journal_id fk
+- account_id fk
+- debit_amount bigint default 0
+- credit_amount bigint default 0
+- description
+- student_id nullable
+- employee_id nullable
+- asset_id nullable
+- cost_center_id nullable
+```
+
+### `budget_headers`
+
+```text
+budget_headers
+- id uuid pk
+- unit_id fk
+- academic_year_id fk
+- name
+- period_start
+- period_end
+- status: draft/submitted/revision/approved/active/closed
+- submitted_by
+- approved_by
+```
+
+### `budget_lines`
+
+```text
+budget_lines
+- id uuid pk
+- budget_id fk
+- account_id fk
+- cost_center_id nullable
+- planned_amount bigint
+- realized_amount bigint
+- remaining_amount bigint
+```
+
+---
+
+# 10. Audit, Security, dan Compliance Tables
+
+### `audit_logs`
+
+```text
+audit_logs
+- id uuid pk
+- foundation_id fk
+- actor_user_id
+- action
+- entity_type
+- entity_id
+- old_value jsonb
+- new_value jsonb
+- ip_address
+- user_agent
+- request_id
+- created_at
+```
+
+### `login_attempts`
+
+```text
+login_attempts
+- id uuid pk
+- user_id nullable
+- email_or_phone
+- success boolean
+- ip_address
+- user_agent
+- reason
+- created_at
+```
+
+### `api_keys`
+
+```text
+api_keys
+- id uuid pk
+- provider
+- key_hash
+- scopes
+- status
+- last_used_at
+```
+
+### `webhook_events`
+
+```text
+webhook_events
+- id uuid pk
+- provider
+- external_event_id unique
+- signature_valid boolean
+- payload jsonb
+- status: received/processed/failed/ignored
+- processed_at
+```
+
+### `data_access_logs`
+
+```text
+data_access_logs
+- id uuid pk
+- user_id
+- data_type
+- subject_type
+- subject_id
+- purpose
+- accessed_at
+```
+
+Karena sistem akan menyimpan data siswa, wali, nomor telepon, pembayaran, dan histori transaksi, desain harus memperhatikan UU Perlindungan Data Pribadi Indonesia. UU No. 27 Tahun 2022 tentang Pelindungan Data Pribadi berstatus berlaku, sehingga sekolah/yayasan perlu menjaga dasar pemrosesan data, pembatasan akses, keamanan, audit, dan hak subjek data. ([Database Peraturan | JDIH BPK][7])
+
+---
+
+# 11. Index, Partition, dan Performa Ribuan User
+
+## Index wajib
+
+```text
+students(unit_id, class_id, enrollment_status)
+invoices(student_id, status)
+invoices(unit_id, period_year, period_month, status)
+invoice_items(invoice_id)
+payments(student_id, paid_at)
+payments(external_transaction_id)
+payment_intents(external_reference)
+account_ledger(account_id, created_at)
+journal_entries(unit_id, journal_date, status)
+journal_lines(account_id)
+canteen_orders(unit_id, created_at)
+audit_logs(actor_user_id, created_at)
+```
+
+## Partition table besar
+
+Gunakan partition per bulan/tahun untuk:
+
+```text
+payments
+account_ledger
+journal_entries
+journal_lines
+canteen_orders
+audit_logs
+webhook_events
+```
+
+Contoh desain konseptual:
+
+```text
+payments_2026_01
+payments_2026_02
+payments_2026_03
+...
+```
+
+## Cache
+
+Gunakan Redis untuk:
+
+1. Session
+2. Rate limit
+3. OTP
+4. Cache dashboard
+5. Queue status
+6. Lock transaksi
+7. Idempotency sementara
+8. Stock/cart e-kantin sementara
+
+## Queue
+
+Gunakan message queue untuk:
+
+1. Kirim WhatsApp
+2. Generate PDF
+3. Export Excel besar
+4. Sinkronisasi payment gateway
+5. Rekonsiliasi bank
+6. Posting jurnal batch
+7. Reminder tagihan
+8. Backup job
+
+---
+
+# 12. Arsitektur Backend
+
+Rekomendasi stack:
+
+```text
+Frontend Web Admin      : Next.js / React
+Mobile Parent/Student   : Flutter / React Native
+Backend API             : NestJS / Laravel / Spring Boot
+Database                : PostgreSQL
+Cache                   : Redis
+Queue                   : RabbitMQ / Kafka / Redis Queue
+Object Storage          : S3-compatible / MinIO
+Search                  : PostgreSQL full-text, optional OpenSearch
+Realtime                : WebSocket/SSE
+Report Engine           : PDF/Excel worker
+Monitoring              : Prometheus + Grafana
+Logging                 : ELK/OpenSearch/Loki
+Deployment              : Docker + Kubernetes / Docker Swarm
+Reverse Proxy           : Nginx / Traefik
+```
+
+## Backend service/module
+
+1. Auth Service
+2. User & RBAC Service
+3. Student Service
+4. Billing Service
+5. Payment Service
+6. Savings/Wallet Service
+7. Cashier Service
+8. Canteen Service
+9. Inventory Service
+10. Asset Service
+11. Accounting Service
+12. Budget/RAB Service
+13. Reporting Service
+14. Notification Service
+15. Audit Service
+16. File/Attachment Service
+17. Integration Service
+18. Admin Configuration Service
+
+Bisa mulai sebagai **modular monolith** dulu, bukan microservices penuh. Untuk yayasan, modular monolith lebih mudah dirawat. Setelah trafik besar, modul berat seperti report, notification, payment webhook, dan e-kantin bisa dipisah menjadi service tersendiri.
+
+---
+
+# 13. Arsitektur Frontend
+
+## A. Web Admin Yayasan
+
+Halaman:
+
+1. Dashboard yayasan
+2. Master unit sekolah
+3. Master siswa
+4. Master pegawai
+5. Master kelas
+6. Master akun/COA
+7. Role & permission
+8. Konfigurasi payment gateway
+9. Laporan konsolidasi
+10. Audit log
+
+## B. Web Bendahara
+
+Halaman:
+
+1. Dashboard keuangan
+2. Generate tagihan
+3. Daftar tagihan
+4. Pembayaran
+5. Tunggakan
+6. Tabungan
+7. Kas/bank
+8. Pengeluaran
+9. Jurnal
+10. Buku besar
+11. Neraca
+12. RAB
+13. Rekonsiliasi bank
+14. Export laporan
+
+## C. Web Kepala Sekolah
+
+Halaman:
+
+1. Dashboard unit
+2. Tunggakan kelas
+3. Approval pengeluaran
+4. Approval RAB
+5. Laporan unit
+6. Aktivitas kasir
+7. Inventaris/aset
+
+## D. Kasir Mode
+
+Halaman harus cepat dan sederhana:
+
+1. Login shift
+2. Cari/scan siswa
+3. Pilih tagihan
+4. Input bayar
+5. Cetak struk
+6. Setor tabungan
+7. Tarik tabungan
+8. Closing kas
+9. Riwayat transaksi
+
+## E. POS E-Kantin
+
+1. Grid produk
+2. Scan kartu/QR siswa
+3. Cart
+4. Cek saldo
+5. Checkout
+6. Refund/void
+7. Closing kantin
+8. Stok cepat
+9. Laporan penjualan
+
+## F. Mobile Orang Tua
+
+1. Login OTP/password
+2. Pilih anak
+3. Tagihan
+4. Bayar online
+5. Riwayat pembayaran
+6. Saldo tabungan/dompet
+7. Riwayat jajan kantin
+8. Limit uang saku
+9. Notifikasi
+10. Download bukti bayar
+
+## G. Mobile Siswa
+
+1. QR siswa
+2. Saldo
+3. Mutasi
+4. Riwayat kantin
+5. Limit harian
+6. Notifikasi
+
+---
+
+# 14. Cybersecurity Design
+
+## A. Autentikasi
+
+1. Password hash pakai Argon2id/bcrypt.
+2. MFA untuk admin, bendahara, kepala sekolah.
+3. OTP untuk orang tua.
+4. Rate limit login.
+5. Lock akun setelah percobaan gagal.
+6. Session timeout.
+7. Refresh token rotation.
+8. Re-authentication untuk aksi sensitif seperti refund, ubah rekening, void transaksi, approval besar. OWASP menyarankan autentikasi ulang untuk aktivitas mencurigakan, pemulihan akun, dan aksi kritis. ([OWASP Cheat Sheet Series][8])
+
+Pseudo:
+
+```text
+LOGIN(identifier, password):
+    cek rate limit by IP + identifier
+    ambil user
+    jika user locked:
+        reject
+    verify password hash
+    jika gagal:
+        increment failed_login
+        log attempt
+        reject
+    jika MFA aktif:
+        buat mfa_challenge
+        return need_mfa
+    buat access_token pendek
+    buat refresh_token rotating
+    log success
+```
+
+## B. Authorization
+
+1. RBAC: role-based.
+2. ABAC: cek unit, kelas, siswa, pemilik akun.
+3. Object-level permission di setiap endpoint.
+4. Policy engine internal.
+
+Pseudo:
+
+```text
+AUTHORIZE(user, action, resource):
+    cek permission action pada role user
+    cek scope:
+        jika resource.unit_id bukan dalam user.allowed_units:
+            reject
+        jika user role parent:
+            pastikan resource.student_id milik anak user
+        jika user role wali_kelas:
+            pastikan student.class_id == user.class_id
+    allow
+```
+
+## C. API Security
+
+1. Semua API pakai HTTPS.
+2. Input validation.
+3. Output encoding.
+4. CSRF protection untuk cookie session.
+5. CORS ketat.
+6. Rate limit per user/IP/device.
+7. Idempotency key untuk transaksi.
+8. Request ID untuk tracing.
+9. Tidak expose incremental ID.
+10. Gunakan UUID.
+11. Pagination wajib.
+12. File upload dibatasi MIME, ukuran, antivirus scan.
+13. Webhook signature verification.
+14. API inventory terdokumentasi.
+
+OWASP API Security Top 10 2023 menempatkan Broken Object Level Authorization sebagai risiko utama API, sehingga semua endpoint seperti `/students/{id}`, `/invoices/{id}`, `/wallets/{id}` harus cek kepemilikan dan scope, bukan sekadar login. ([OWASP][4])
+
+## D. Data Protection
+
+1. Enkripsi at-rest untuk database/disk.
+2. Enkripsi field sensitif:
+
+   * nomor identitas
+   * nomor rekening
+   * token payment gateway
+3. Masking data di UI:
+
+   * nomor HP
+   * rekening
+   * NIK bila ada
+4. Backup terenkripsi.
+5. Least privilege database user.
+6. Data retention policy.
+7. Audit siapa melihat/mengubah data.
+8. Jangan simpan password, PIN, OTP plain text.
+9. Jangan simpan data kartu pembayaran.
+
+## E. Audit & Anti-Fraud
+
+Transaksi yang harus masuk audit:
+
+1. Login admin
+2. Generate tagihan
+3. Ubah nominal tagihan
+4. Diskon/beasiswa
+5. Pembayaran
+6. Void/refund
+7. Tarik tabungan
+8. Ubah saldo
+9. Posting jurnal
+10. Hapus/ubah aset
+11. Ubah role user
+12. Export data siswa
+13. Ubah konfigurasi payment gateway
+
+Anti-fraud rule:
+
+```text
+DETECT_SUSPICIOUS_TRANSACTION(transaction):
+    jika void/refund berulang oleh kasir sama:
+        flag
+    jika diskon besar tanpa approval:
+        flag
+    jika tarik tabungan di atas limit:
+        require approval
+    jika transaksi terjadi di luar jam operasional:
+        flag
+    jika banyak gagal login:
+        lock / challenge
+```
+
+---
+
+# 15. High Availability & Ribuan User
+
+Target awal:
+
+```text
+Concurrent user     : 1.000 - 5.000
+Total akun          : 10.000 - 50.000
+Transaksi harian    : 10.000 - 100.000
+Peak traffic        : awal bulan, jam istirahat kantin, deadline SPP
+```
+
+## Desain deployment
+
+```text
+Internet
+  -> CDN/WAF
+  -> Load Balancer
+  -> Frontend Web
+  -> API Gateway / Backend
+  -> PostgreSQL Primary
+  -> PostgreSQL Read Replica
+  -> Redis Cluster
+  -> Queue Workers
+  -> Object Storage
+```
+
+## Strategi scale
+
+1. Horizontal scale backend.
+2. Read replica untuk laporan berat.
+3. Queue untuk proses lambat.
+4. Cache dashboard.
+5. Partition tabel transaksi.
+6. Index disiplin.
+7. Connection pooling PgBouncer.
+8. Limit export besar via background job.
+9. Separate reporting database bila data besar.
+10. Backup harian + point-in-time recovery.
+
+## SLA internal
+
+```text
+Login/dashboard       < 2 detik
+Checkout kantin       < 1 detik ideal
+Pembayaran kasir      < 2 detik
+Generate laporan      async jika > 5 detik
+Webhook payment       idempotent dan retry-safe
+Backup                harian + WAL archiving
+RPO                   maksimal 15 menit
+RTO                   1-4 jam
+```
+
+---
+
+# 16. Pseudo-code Modul Utama
+
+## 16.1 Generate Invoice
+
+```text
+FUNCTION generate_invoice_for_student(student, billing_rule, period):
+    IF invoice_exists(student.id, billing_rule.id, period):
+        RETURN existing_invoice
+
+    base_amount = billing_rule.amount
+    discount = calculate_discount(student, billing_rule)
+    penalty = 0
+    total = base_amount - discount + penalty
+
+    invoice = create_invoice(
+        student_id = student.id,
+        due_date = calculate_due_date(billing_rule, period),
+        total_amount = total,
+        status = "published"
+    )
+
+    create_invoice_item(
+        invoice_id = invoice.id,
+        billing_type_id = billing_rule.billing_type_id,
+        amount = base_amount,
+        discount_amount = discount,
+        net_amount = total
+    )
+
+    IF accounting_policy == "accrual":
+        create_journal_for_invoice(invoice)
+
+    send_invoice_notification(student.guardian)
+
+    RETURN invoice
+```
+
+## 16.2 Payment Allocation
+
+```text
+FUNCTION allocate_payment(payment, invoice_list):
+    remaining = payment.amount
+
+    FOR invoice IN sort_by_due_date(invoice_list):
+        unpaid = invoice.outstanding_amount
+
+        allocation_amount = MIN(remaining, unpaid)
+
+        create_payment_allocation(payment.id, invoice.id, allocation_amount)
+
+        invoice.paid_amount += allocation_amount
+        invoice.outstanding_amount -= allocation_amount
+
+        IF invoice.outstanding_amount == 0:
+            invoice.status = "paid"
+        ELSE:
+            invoice.status = "partial"
+
+        remaining -= allocation_amount
+
+        IF remaining == 0:
+            BREAK
+
+    IF remaining > 0:
+        create_credit_balance(payment.student_id, remaining)
+```
+
+## 16.3 Jurnal Pembayaran
+
+```text
+FUNCTION create_journal_for_payment(payment):
+    journal = create_journal_entry(
+        date = payment.paid_at,
+        source_module = "payment",
+        source_id = payment.id
+    )
+
+    debit_account = resolve_cash_or_bank_account(payment.method)
+    credit_account = resolve_receivable_account(payment)
+
+    add_journal_line(journal, debit_account, debit = payment.amount)
+    add_journal_line(journal, credit_account, credit = payment.amount)
+
+    validate_debit_credit_balance(journal)
+
+    post_journal(journal)
+```
+
+## 16.4 Top-up Dompet
+
+```text
+FUNCTION topup_wallet(wallet_id, amount, method, actor):
+    authorize(actor, "wallet.topup", wallet_id)
+
+    IF amount <= 0:
+        REJECT
+
+    BEGIN_TRANSACTION
+        wallet = lock_wallet(wallet_id)
+
+        transaction = create_wallet_transaction(
+            wallet_id = wallet.id,
+            type = "topup",
+            amount = amount
+        )
+
+        create_wallet_ledger(
+            wallet_id = wallet.id,
+            direction = "credit",
+            amount = amount,
+            balance_after = wallet.balance + amount
+        )
+
+        wallet.balance += amount
+
+        create_journal_wallet_topup(transaction)
+
+        audit(actor, "wallet.topup", wallet_id)
+    COMMIT
+```
+
+## 16.5 Checkout E-Kantin
+
+```text
+FUNCTION canteen_checkout(student_id, cart, cashier):
+    authorize(cashier, "canteen.checkout", cashier.unit_id)
+
+    student = get_student(student_id)
+    wallet = lock_wallet(student.wallet_id)
+
+    total = calculate_cart_total(cart)
+
+    IF total > wallet.balance:
+        REJECT "Saldo tidak cukup"
+
+    IF exceeds_daily_limit(student_id, total):
+        REJECT "Melebihi limit harian"
+
+    BEGIN_TRANSACTION
+        order = create_canteen_order(student, cashier, total)
+
+        FOR item IN cart:
+            validate_stock(item.product_id, item.qty)
+            create_order_item(order.id, item)
+            decrease_stock(item.product_id, item.qty)
+
+        debit_wallet(wallet, total, source = order)
+
+        create_journal_canteen_sale(order)
+
+        audit(cashier, "canteen.checkout", order.id)
+    COMMIT
+
+    notify_guardian(student.guardian, order)
+```
+
+## 16.6 Refund / Void
+
+```text
+FUNCTION void_transaction(transaction_id, actor, reason):
+    authorize(actor, "transaction.void", transaction_id)
+
+    IF transaction.status != "success":
+        REJECT
+
+    IF actor.role not allowed OR amount > actor.void_limit:
+        require_approval()
+
+    BEGIN_TRANSACTION
+        original = lock_transaction(transaction_id)
+
+        create_reversal_transaction(original, reason)
+        create_reversal_journal(original.journal_id)
+        restore_invoice_or_wallet_or_stock(original)
+
+        original.status = "voided"
+
+        audit(actor, "transaction.void", transaction_id)
+    COMMIT
+```
+
+## 16.7 Closing Kasir
+
+```text
+FUNCTION close_cashier_session(session_id, actual_cash, actor):
+    session = get_active_session(session_id)
+
+    authorize(actor, "cashier.close", session)
+
+    system_cash = calculate_cash_in_session(session)
+
+    difference = actual_cash - system_cash
+
+    BEGIN_TRANSACTION
+        session.closing_cash_actual = actual_cash
+        session.closing_cash_system = system_cash
+        session.difference_amount = difference
+        session.status = "closed"
+        session.closed_at = now()
+
+        IF difference != 0:
+            create_cash_difference_record(session, difference)
+
+        audit(actor, "cashier.close", session.id)
+    COMMIT
+```
+
+## 16.8 Generate Neraca
+
+```text
+FUNCTION balance_sheet(unit_id, as_of_date):
+    authorize(current_user, "report.balance_sheet", unit_id)
+
+    balances = get_account_balances(unit_id, as_of_date)
+
+    assets = sum_account_type(balances, "asset")
+    liabilities = sum_account_type(balances, "liability")
+    equity = sum_account_type(balances, "equity")
+    surplus_deficit = calculate_current_year_result(unit_id, as_of_date)
+
+    total_right_side = liabilities + equity + surplus_deficit
+
+    IF assets != total_right_side:
+        mark_report_as_unbalanced()
+
+    RETURN report
+```
+
+---
+
+# 17. Menu Sistem Lengkap
+
+## Admin Yayasan
+
+```text
+Dashboard
+Master Yayasan
+Unit Sekolah
+Tahun Ajaran
+Kelas
+Siswa
+Pegawai
+Role & Permission
+COA
+Konfigurasi Tagihan
+Konfigurasi Payment Gateway
+Konfigurasi WhatsApp
+Audit Log
+Backup & Restore
+```
+
+## Keuangan
+
+```text
+Dashboard Keuangan
+Tagihan Siswa
+Pembayaran
+Tunggakan
+Tabungan
+Dompet Digital
+Kas & Bank
+Pengeluaran
+Rekonsiliasi Bank
+Jurnal
+Buku Besar
+Neraca Saldo
+Neraca
+Laporan Aktivitas
+Arus Kas
+RAB
+Laporan Keuangan
+```
+
+## Kasir
+
+```text
+Buka Shift
+Pembayaran Siswa
+Setor Tabungan
+Tarik Tabungan
+Cetak Struk
+Riwayat Transaksi
+Void Request
+Closing Shift
+```
+
+## Kantin
+
+```text
+POS Kantin
+Produk/Menu
+Kategori
+Stok Kantin
+Order
+Refund/Void
+Closing Kantin
+Laporan Penjualan
+```
+
+## Inventaris & Aset
+
+```text
+Master Barang
+Stok Masuk
+Stok Keluar
+Mutasi Barang
+Stock Opname
+Register Aset
+Mutasi Aset
+Maintenance
+Penyusutan
+Penghapusan Aset
+Laporan Aset
+```
+
+## Orang Tua
+
+```text
+Dashboard Anak
+Tagihan
+Bayar Online
+Riwayat Bayar
+Tabungan
+Dompet Digital
+Riwayat Kantin
+Limit Belanja
+Notifikasi
+Profil
+```
+
+---
+
+# 18. Prioritas Pengembangan
+
+## Phase 1 — Core Keuangan
+
+1. Auth + RBAC
+2. Master siswa, kelas, unit
+3. Tagihan siswa
+4. Pembayaran tunai
+5. Pembayaran online
+6. Tabungan siswa
+7. Kasir sekolah
+8. Jurnal otomatis sederhana
+9. Laporan tagihan/tunggakan/penerimaan
+
+## Phase 2 — Akuntansi Lengkap
+
+1. COA
+2. Buku besar
+3. Neraca saldo
+4. Neraca
+5. Laporan aktivitas
+6. Arus kas
+7. Rekonsiliasi bank
+8. Closing periode
+
+## Phase 3 — E-Kantin & Dompet
+
+1. Dompet digital internal
+2. POS kantin
+3. Stok kantin
+4. Limit belanja siswa
+5. Notifikasi wali
+6. Laporan kantin
+
+## Phase 4 — Inventaris, Aset, RAB
+
+1. Inventaris barang
+2. Aset tetap
+3. Penyusutan
+4. Maintenance
+5. RAB
+6. Realisasi anggaran
+
+## Phase 5 — Scale & Hardening
+
+1. Read replica
+2. Partitioning
+3. WAF
+4. SIEM/log monitoring
+5. Penetration test
+6. Disaster recovery
+7. Performance test ribuan user
+
+---
+
+# 19. Checklist Keamanan Minimum Sebelum Go-Live
+
+```text
+[ ] HTTPS aktif
+[ ] Password hash aman
+[ ] MFA admin/bendahara
+[ ] RBAC + object-level authorization
+[ ] Rate limit login dan API
+[ ] Audit log aktif
+[ ] Backup terenkripsi
+[ ] Restore test berhasil
+[ ] Payment webhook signature check
+[ ] Idempotency payment
+[ ] Tidak ada transaksi financial yang bisa hard delete
+[ ] File upload divalidasi
+[ ] Error tidak bocorkan stack trace
+[ ] Secret disimpan di vault/env, bukan source code
+[ ] Database user least privilege
+[ ] Period closing/locking
+[ ] Test BOLA/IDOR untuk semua endpoint
+[ ] Logging suspicious activity
+[ ] Data pribadi siswa dimasking sesuai kebutuhan
+```
+
+---
+
+# 20. Kesimpulan Desain
+
+Untuk kebutuhan Yayasan Pendidikan El Yaomy Klaten, sistem idealnya dibuat sebagai **platform keuangan sekolah terpadu**, bukan hanya aplikasi SPP. Intinya:
+
+1. **Tagihan, pembayaran, tabungan, dompet, kantin, kasir, inventaris, aset, jurnal, neraca, laporan, dan RAB harus terhubung.**
+2. **Semua transaksi uang harus masuk ledger dan jurnal.**
+3. **Saldo siswa/dompet/tabungan harus immutable ledger, bukan angka manual.**
+4. **Payment online wajib idempotent, signed webhook, dan rekonsiliasi.**
+5. **PostgreSQL harus didesain dengan UUID, audit log, index, partition, transaction lock, dan row-level/security policy.**
+6. **Frontend harus dipisah berdasarkan role: admin, bendahara, kasir, kantin, kepala sekolah, orang tua, siswa.**
+7. **Cybersecurity harus menjadi desain awal, bukan tambahan belakangan.**
+
+[1]: https://schoolpay.co.id/?utm_source=chatgpt.com "Aplikasi Keuangan Sekolah Terbaik - School Payment App"
+[2]: https://owasp.org/www-project-application-security-verification-standard/?utm_source=chatgpt.com "OWASP Application Security Verification Standard (ASVS)"
+[3]: https://www.bi.go.id/id/layanan/standar/snap/default.aspx?utm_source=chatgpt.com "Standar Nasional Open API Pembayaran (SNAP) - Bank Indonesia"
+[4]: https://owasp.org/API-Security/editions/2023/en/0xa1-broken-object-level-authorization/?utm_source=chatgpt.com "API1:2023 Broken Object Level Authorization - OWASP API Security Top 10"
+[5]: https://openeducat.org/feature-canteen/?utm_source=chatgpt.com "Canteen Management System for Schools | OpenEduCat"
+[6]: https://monpg.app/blog/postgresql-multitenant-schema-design?utm_source=chatgpt.com "Multi-Tenant PostgreSQL Schema Design — Practical Tradeoffs"
+[7]: https://peraturan.bpk.go.id/Details/229798/uu-no-27-tahun-2022?utm_source=chatgpt.com "UU No. 27 Tahun 2022 - JDIH BPK RI"
+[8]: https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html?utm_source=chatgpt.com "Authentication - OWASP Cheat Sheet Series"

@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Download Aplikasi - SPP El Yaomy</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            max-width: 500px;
+            width: 100%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        .logo {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .logo img {
+            width: 80px;
+            height: 80px;
+            border-radius: 20px;
+        }
+        h1 {
+            color: #333;
+            font-size: 24px;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+        .subtitle {
+            color: #666;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .info-box {
+            background: #f5f5f5;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+        .info-row:last-child { margin-bottom: 0; }
+        .info-label { color: #666; font-weight: 500; }
+        .info-value { color: #333; font-weight: 600; }
+        .download-btn {
+            display: block;
+            width: 100%;
+            padding: 16px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            text-align: center;
+            text-decoration: none;
+            border-radius: 10px;
+            font-size: 18px;
+            font-weight: 600;
+            transition: transform 0.2s;
+            border: none;
+            cursor: pointer;
+        }
+        .download-btn:hover { transform: translateY(-2px); }
+        .download-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .status {
+            text-align: center;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        .status.success { background: #d4edda; color: #155724; }
+        .status.warning { background: #fff3cd; color: #856404; }
+        .status.error { background: #f8d7da; color: #721c24; }
+        .changelog {
+            background: #f5f5f5;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .changelog h3 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+        .changelog ul {
+            list-style: none;
+            padding-left: 0;
+        }
+        .changelog li {
+            color: #666;
+            padding: 5px 0;
+            padding-left: 20px;
+            position: relative;
+        }
+        .changelog li:before {
+            content: "✓";
+            position: absolute;
+            left: 0;
+            color: #667eea;
+            font-weight: bold;
+        }
+        .loading {
+            text-align: center;
+            color: #666;
+            padding: 20px;
+        }
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">
+            <img src="/logo yaomy.jpg" alt="El Yaomy">
+        </div>
+        <h1>Download Aplikasi</h1>
+        <p class="subtitle">SPP Sekolah El Yaomy</p>
+        
+        <div id="content">
+            <div class="loading">
+                <div class="spinner"></div>
+                <p>Memeriksa versi terbaru...</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'https://sekolah.otomasi.app/api';
+        
+        async function loadLatestVersion() {
+            const content = document.getElementById('content');
+            
+            try {
+                const response = await fetch(`${API_BASE}/apk/latest`);
+                
+                if (!response.ok) {
+                    throw new Error('Gagal memuat informasi versi');
+                }
+                
+                const data = await response.json();
+                renderVersionInfo(data);
+                
+            } catch (error) {
+                content.innerHTML = `
+                    <div class="status error">
+                        <strong>Error:</strong> ${error.message}
+                    </div>
+                    <button class="download-btn" onclick="window.location.reload()">
+                        Coba Lagi
+                    </button>
+                `;
+            }
+        }
+        
+        function renderVersionInfo(data) {
+            const content = document.getElementById('content');
+            const { version, release_date, changelog, download_url, force_update } = data;
+            
+            let statusHtml = '';
+            if (force_update) {
+                statusHtml = `
+                    <div class="status warning">
+                        <strong>Update Wajib:</strong> Versi lama tidak dapat digunakan
+                    </div>
+                `;
+            }
+            
+            let changelogHtml = '';
+            if (changelog && changelog.length > 0) {
+                changelogHtml = `
+                    <div class="changelog">
+                        <h3>Perubahan Versi ${version}</h3>
+                        <ul>
+                            ${changelog.map(item => `<li>${item}</li>`).join('')}
+                        </ul>
+                    </div>
+                `;
+            }
+            
+            const releaseDate = new Date(release_date).toLocaleDateString('id-ID', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+            });
+            
+            content.innerHTML = `
+                ${statusHtml}
+                <div class="info-box">
+                    <div class="info-row">
+                        <span class="info-label">Versi</span>
+                        <span class="info-value">${version}</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Tanggal Rilis</span>
+                        <span class="info-value">${releaseDate}</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Ukuran</span>
+                        <span class="info-value">${data.file_size || 'N/A'}</span>
+                    </div>
+                </div>
+                ${changelogHtml}
+                <a href="${API_BASE}/apk/download/${download_url.split('/').pop()}" 
+                   class="download-btn" 
+                   download>
+                    Download APK (${version})
+                </a>
+                <p style="text-align: center; margin-top: 15px; color: #666; font-size: 14px;">
+                    Pastikan Anda mengizinkan instalasi dari sumber tidak dikenal di pengaturan perangkat
+                </p>
+            `;
+        }
+        
+        loadLatestVersion();
+    </script>
+</body>
+</html>

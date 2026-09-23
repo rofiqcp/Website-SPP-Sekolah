@@ -1,0 +1,1582 @@
+Masukan paling penting: **desain awal sudah bagus, tapi untuk implementasi nyata harus disederhanakan dan diperkuat di area RFID, top-up, kasir kantin, dan server lokal.** Jangan langsung membuat semua modul besar sekaligus. Untuk Yayasan El Yaomy, saya sarankan sistem dibuat bertahap tetapi fondasinya tetap benar.
+
+Inti review saya:
+
+1. **Saldo tidak boleh disimpan di kartu RFID.**
+2. **Kartu RFID hanya sebagai identitas/token.**
+3. **Saldo asli tetap di server PostgreSQL.**
+4. **PC client kantin hanya alat transaksi, bukan sumber data utama.**
+5. **Semua top-up, pembayaran, refund, void, dan koreksi harus lewat server utama.**
+6. **Admin/guru boleh top-up hanya kalau punya role dan limit yang jelas.**
+7. **Kartu hilang harus bisa langsung diblokir.**
+8. **RFID UID saja tidak cukup aman untuk nominal besar.**
+
+Untuk aplikasi sekolah, pendekatan ini lebih mudah diimplementasikan dan jauh lebih aman.
+
+---
+
+# 1. Revisi Arsitektur yang Lebih Mudah Diimplementasikan
+
+## Topologi yang saya sarankan
+
+```text
+Internet / LAN
+   |
+Router / Firewall
+   |
+Switch LAN
+   |
+------------------------------------------------
+|                    |                         |
+PC Server Utama      PC Client Kantin 1        PC Client Admin/Kasir
+PostgreSQL           RFID Reader/Writer        RFID Reader/Writer
+Backend API          POS Kantin                Top-up/Kasir
+Frontend Admin       Printer Struk             Printer Struk
+Redis optional
+Backup Service
+```
+
+## PC Server Utama
+
+Isi server utama:
+
+```text
+- PostgreSQL database
+- Backend API
+- Web admin
+- Web kasir
+- Web kantin
+- Background worker
+- File storage lokal
+- Backup scheduler
+- Audit log
+```
+
+## PC Client
+
+Isi PC client:
+
+```text
+- Browser / aplikasi desktop ringan
+- Login user
+- Terhubung ke server utama via LAN
+- RFID reader/writer USB
+- Printer struk
+- Tidak menyimpan saldo
+- Tidak menyimpan password database
+- Tidak boleh konek langsung ke PostgreSQL
+```
+
+**Penting:** PC client jangan diberi akses langsung ke PostgreSQL. Semua transaksi harus lewat **Backend API**. Ini untuk mencegah user iseng membuka database atau mengubah saldo.
+
+---
+
+# 2. Catatan Penting Tentang RFID
+
+## Jangan gunakan UID kartu sebagai satu-satunya keamanan
+
+Banyak kartu RFID murah hanya mengirim UID. UID bisa dibaca dan pada beberapa jenis kartu bisa dikloning. Jadi kalau sistem hanya begini:
+
+```text
+Scan UID -> ambil saldo -> bayar
+```
+
+itu **kurang aman**.
+
+Lebih aman:
+
+```text
+Scan kartu -> baca token kartu -> kirim ke server -> server validasi kartu aktif -> server cek saldo -> server proses transaksi
+```
+
+Untuk aplikasi yang butuh keamanan, NXP sendiri menyarankan keluarga MIFARE DESFire atau MIFARE Plus untuk security-relevant applications, bukan MIFARE Classic. ([NXP][1]) MIFARE DESFire EV3 juga memang diposisikan sebagai secure contactless IC dan mendukung mekanisme kriptografi seperti AES. ([NXP][2])
+
+## Rekomendasi jenis kartu
+
+### Opsi murah / MVP
+
+```text
+Kartu RFID 13.56 MHz UID-only
+Reader USB umum
+Saldo tetap di server
+Limit transaksi rendah
+Wajib online ke server
+Kartu bisa diblokir
+```
+
+Kelebihan:
+
+```text
+- Murah
+- Mudah dibuat
+- Cepat implementasi
+```
+
+Kekurangan:
+
+```text
+- UID bisa berisiko dikloning
+- Cocok hanya untuk nominal kecil
+- Harus diperkuat dengan limit, audit, dan blokir cepat
+```
+
+### Opsi lebih aman
+
+```text
+MIFARE DESFire EV2 / EV3
+Reader yang mendukung DESFire
+Key per sekolah
+Mutual authentication
+Token terenkripsi
+Saldo tetap di server
+```
+
+Kelebihan:
+
+```text
+- Lebih sulit dikloning
+- Cocok untuk sistem kantin dan dompet siswa
+- Bisa pakai diversified key per kartu
+```
+
+Kekurangan:
+
+```text
+- Biaya kartu dan reader lebih mahal
+- Implementasi lebih teknis
+```
+
+## Rekomendasi saya
+
+Untuk El Yaomy:
+
+```text
+Tahap awal:
+RFID UID-only boleh, tetapi hanya sebagai identitas, bukan penyimpan saldo.
+
+Tahap aman:
+Gunakan MIFARE DESFire EV3 untuk kartu resmi siswa.
+```
+
+---
+
+# 3. Prinsip Paling Penting: Jangan Simpan Saldo di Kartu
+
+Desain yang salah:
+
+```text
+Kartu menyimpan saldo Rp50.000
+Reader mengurangi saldo di kartu
+Server hanya mencatat belakangan
+```
+
+Masalah:
+
+```text
+- Kartu bisa dimanipulasi
+- Jika kartu rusak, saldo hilang
+- Jika reader/client error, data tidak sinkron
+- Sulit audit
+- Rawan fraud
+```
+
+Desain yang benar:
+
+```text
+Kartu menyimpan card_token / card_uid
+Saldo ada di server PostgreSQL
+Semua transaksi diproses server
+Kartu hanya sebagai alat identifikasi siswa
+```
+
+Alur aman:
+
+```text
+Siswa tap kartu
+Reader membaca card_uid/card_token
+PC client kirim ke backend
+Backend cek kartu aktif
+Backend cek siswa
+Backend cek wallet
+Backend cek limit
+Backend potong saldo
+Backend simpan ledger
+Backend kirim hasil ke client
+Client cetak struk
+```
+
+---
+
+# 4. Modul Tambahan Khusus RFID
+
+Tambahkan modul baru:
+
+```text
+Manajemen Kartu RFID
+```
+
+Fitur:
+
+```text
+- Daftar kartu siswa
+- Penerbitan kartu baru
+- Aktivasi kartu
+- Penggantian kartu hilang
+- Blokir kartu
+- Unblock kartu
+- Riwayat kartu siswa
+- Mapping kartu ke siswa
+- Masa berlaku kartu
+- PIN tambahan opsional
+- Limit transaksi kartu
+- Audit tap kartu
+- Cetak kartu siswa
+```
+
+Status kartu:
+
+```text
+unissued      = kartu belum dipakai
+active        = kartu aktif
+blocked       = kartu diblokir
+lost          = kartu hilang
+replaced      = kartu sudah diganti
+expired       = kartu kedaluwarsa
+damaged       = kartu rusak
+```
+
+---
+
+# 5. Database Tambahan untuk RFID
+
+## `rfid_cards`
+
+```text
+rfid_cards
+- id uuid pk
+- unit_id uuid fk
+- student_id uuid fk nullable
+- employee_id uuid fk nullable
+- card_uid_hash text unique
+- card_public_id text unique
+- card_type text
+  contoh: UID_ONLY, MIFARE_CLASSIC, DESFIRE_EV3
+- card_label text
+  contoh: Kartu Siswa 2026
+- status text
+  contoh: unissued, active, blocked, lost, replaced, expired, damaged
+- issued_at timestamp
+- expired_at timestamp nullable
+- blocked_at timestamp nullable
+- blocked_reason text nullable
+- replaced_by_card_id uuid nullable
+- created_by uuid
+- created_at timestamp
+- updated_at timestamp
+```
+
+**Catatan:**
+Sebaiknya `card_uid` jangan disimpan polos. Simpan sebagai hash:
+
+```text
+card_uid_hash = HMAC_SHA256(server_secret, raw_card_uid)
+```
+
+Jadi kalau database bocor, UID kartu tidak langsung terbuka.
+
+---
+
+## `rfid_card_events`
+
+```text
+rfid_card_events
+- id uuid pk
+- card_id uuid fk
+- event_type text
+  contoh: issued, scanned, blocked, unblocked, lost_reported, replaced
+- device_id uuid fk
+- user_id uuid fk nullable
+- ip_address text
+- metadata jsonb
+- created_at timestamp
+```
+
+---
+
+## `rfid_devices`
+
+```text
+rfid_devices
+- id uuid pk
+- unit_id uuid fk
+- device_code text unique
+- device_name text
+- device_type text
+  contoh: reader, writer, reader_writer
+- location_type text
+  contoh: kantin, admin, kasir, koperasi
+- location_name text
+- pc_client_name text
+- allowed_module text[]
+  contoh: ['canteen', 'topup', 'cashier']
+- api_key_hash text
+- status text
+  contoh: active, inactive, blocked, maintenance
+- last_seen_at timestamp
+- created_at timestamp
+```
+
+---
+
+## `rfid_device_sessions`
+
+```text
+rfid_device_sessions
+- id uuid pk
+- device_id uuid fk
+- user_id uuid fk
+- login_at timestamp
+- logout_at timestamp nullable
+- ip_address text
+- status text
+```
+
+Gunanya: satu reader harus jelas sedang dipakai oleh siapa. Kalau ada transaksi aneh, bisa dilacak:
+
+```text
+Kartu siapa
+Reader mana
+PC mana
+User login siapa
+Jam berapa
+Nominal berapa
+```
+
+---
+
+# 6. Database Wallet / Dompet Perlu Diperkuat
+
+## `wallets`
+
+```text
+wallets
+- id uuid pk
+- unit_id uuid fk
+- owner_type text
+  contoh: student, employee
+- owner_id uuid
+- wallet_number text unique
+- cached_balance bigint
+- status text
+  contoh: active, frozen, closed
+- daily_spending_limit bigint
+- single_transaction_limit bigint
+- require_pin_above_amount bigint nullable
+- created_at timestamp
+- updated_at timestamp
+```
+
+---
+
+## `wallet_ledger`
+
+```text
+wallet_ledger
+- id uuid pk
+- wallet_id uuid fk
+- transaction_id uuid
+- direction text
+  contoh: credit, debit
+- transaction_type text
+  contoh: topup, canteen_payment, refund, reversal, adjustment
+- amount bigint
+- balance_before bigint
+- balance_after bigint
+- source_module text
+  contoh: canteen, topup, cashier, admin_adjustment
+- source_id uuid
+- description text
+- created_by uuid
+- created_at timestamp
+```
+
+**Wajib:** jangan update saldo tanpa mencatat ledger.
+
+---
+
+## `wallet_transactions`
+
+```text
+wallet_transactions
+- id uuid pk
+- unit_id uuid fk
+- wallet_id uuid fk
+- transaction_number text unique
+- amount bigint
+- transaction_type text
+- status text
+  contoh: pending, success, failed, reversed, voided
+- reference_no text nullable
+- device_id uuid nullable
+- cashier_session_id uuid nullable
+- approved_by uuid nullable
+- created_by uuid
+- created_at timestamp
+```
+
+---
+
+# 7. Top-up oleh Admin atau Guru
+
+Karena Anda ingin admin/guru bisa setting dan top-up, perlu dibatasi.
+
+## Role top-up
+
+```text
+Super Admin
+- boleh semua
+
+Admin Keuangan
+- boleh top-up
+- boleh refund
+- boleh lihat laporan
+
+Guru/Wali Kelas
+- boleh top-up siswa kelasnya saja
+- nominal dibatasi
+- tidak boleh refund besar
+- tidak boleh adjustment saldo
+
+Kasir
+- boleh top-up tunai
+- harus punya shift aktif
+- wajib closing kas
+
+Petugas Kantin
+- tidak boleh top-up
+- hanya boleh transaksi penjualan kantin
+```
+
+## Limit top-up
+
+Contoh:
+
+```text
+Guru:
+- maksimal top-up per transaksi Rp50.000
+- maksimal total top-up per hari Rp300.000
+- hanya siswa kelasnya
+
+Admin:
+- maksimal top-up per transaksi Rp1.000.000
+- di atas Rp1.000.000 perlu approval bendahara
+
+Bendahara:
+- boleh top-up besar
+- tetap wajib audit log
+```
+
+---
+
+# 8. Alur Top-up RFID
+
+```text
+Admin/guru login di PC client
+Admin/guru scan kartu siswa
+Sistem tampilkan nama siswa dan saldo
+Admin/guru input nominal top-up
+Sistem cek role dan limit
+Sistem minta konfirmasi
+Jika perlu, minta PIN/password ulang
+Sistem simpan transaksi top-up
+Saldo wallet bertambah
+Ledger tercatat
+Jika tunai, kas bertambah
+Struk dicetak
+Orang tua mendapat notifikasi
+```
+
+Pseudo-code:
+
+```text
+FUNCTION topup_by_rfid(actor, device_id, raw_card_uid, amount, payment_method):
+    authorize_device(device_id, module = "topup")
+    authorize(actor, "wallet.topup")
+
+    card_uid_hash = hmac_sha256(SERVER_SECRET, raw_card_uid)
+
+    card = find_card_by_uid_hash(card_uid_hash)
+
+    IF card not found:
+        REJECT "Kartu tidak dikenal"
+
+    IF card.status != "active":
+        REJECT "Kartu tidak aktif"
+
+    student = get_student(card.student_id)
+    wallet = get_wallet(student.id)
+
+    IF actor.role == "teacher":
+        IF student.class_id not in actor.allowed_classes:
+            REJECT "Guru hanya boleh top-up siswa kelasnya"
+        IF amount > TEACHER_SINGLE_TOPUP_LIMIT:
+            REJECT "Nominal melebihi limit guru"
+
+    IF amount <= 0:
+        REJECT "Nominal tidak valid"
+
+    IF is_sensitive_amount(actor, amount):
+        require_reauthentication(actor)
+
+    BEGIN_TRANSACTION
+        locked_wallet = lock_wallet(wallet.id)
+
+        tx = create_wallet_transaction(
+            wallet_id = wallet.id,
+            type = "topup",
+            amount = amount,
+            device_id = device_id,
+            created_by = actor.id,
+            status = "success"
+        )
+
+        insert_wallet_ledger(
+            wallet_id = wallet.id,
+            direction = "credit",
+            amount = amount,
+            balance_before = locked_wallet.cached_balance,
+            balance_after = locked_wallet.cached_balance + amount,
+            source_module = "topup",
+            source_id = tx.id
+        )
+
+        update_wallet_balance(wallet.id, locked_wallet.cached_balance + amount)
+
+        IF payment_method == "cash":
+            create_cash_movement(
+                type = "in",
+                amount = amount,
+                source = tx.id
+            )
+
+        create_journal_for_wallet_topup(tx)
+
+        create_audit_log(actor, "wallet.topup.rfid", tx.id)
+    COMMIT
+
+    send_notification_to_guardian(student.id, tx)
+
+    RETURN success
+```
+
+OWASP menyarankan re-authentication untuk aktivitas kritis seperti perubahan detail sensitif atau operasi berisiko tinggi. Top-up besar, refund, void, dan adjustment saldo termasuk aksi yang layak diberi re-authentication. ([OWASP Cheat Sheet Series][3])
+
+---
+
+# 9. Alur Pembayaran Kantin RFID
+
+```text
+Petugas kantin login
+Siswa tap kartu
+Sistem tampilkan nama, kelas, saldo, limit harian
+Petugas pilih item makanan/minuman
+Sistem hitung total
+Sistem cek saldo
+Sistem cek limit harian
+Sistem cek kartu aktif
+Sistem proses pembayaran
+Saldo berkurang
+Stok berkurang
+Ledger tercatat
+Order kantin tercatat
+Struk dicetak opsional
+Notifikasi ke orang tua opsional
+```
+
+Pseudo-code:
+
+```text
+FUNCTION canteen_pay_by_rfid(cashier, device_id, raw_card_uid, cart_items):
+    authorize_device(device_id, module = "canteen")
+    authorize(cashier, "canteen.checkout")
+
+    IF not active_cashier_session(cashier.id):
+        REJECT "Kasir belum buka shift"
+
+    card_uid_hash = hmac_sha256(SERVER_SECRET, raw_card_uid)
+    card = find_card_by_uid_hash(card_uid_hash)
+
+    IF card is null:
+        REJECT "Kartu tidak terdaftar"
+
+    IF card.status != "active":
+        REJECT "Kartu diblokir/tidak aktif"
+
+    student = get_student(card.student_id)
+    wallet = get_wallet(student.id)
+
+    total = calculate_cart_total(cart_items)
+
+    IF total <= 0:
+        REJECT "Keranjang tidak valid"
+
+    IF total > wallet.cached_balance:
+        REJECT "Saldo tidak cukup"
+
+    IF total > wallet.single_transaction_limit:
+        REJECT "Melebihi limit per transaksi"
+
+    today_spent = get_today_canteen_spending(student.id)
+
+    IF today_spent + total > wallet.daily_spending_limit:
+        REJECT "Melebihi limit harian"
+
+    BEGIN_TRANSACTION
+        locked_wallet = lock_wallet(wallet.id)
+
+        IF locked_wallet.cached_balance < total:
+            REJECT "Saldo berubah, tidak cukup"
+
+        order = create_canteen_order(
+            student_id = student.id,
+            cashier_id = cashier.id,
+            device_id = device_id,
+            total = total,
+            status = "paid"
+        )
+
+        FOR item IN cart_items:
+            product = lock_product(item.product_id)
+
+            IF product.stock_tracking_enabled:
+                IF product.stock < item.qty:
+                    REJECT "Stok tidak cukup"
+                decrease_stock(product.id, item.qty)
+
+            create_canteen_order_item(order.id, item)
+
+        tx = create_wallet_transaction(
+            wallet_id = wallet.id,
+            type = "canteen_payment",
+            amount = total,
+            source_id = order.id,
+            status = "success"
+        )
+
+        insert_wallet_ledger(
+            wallet_id = wallet.id,
+            direction = "debit",
+            amount = total,
+            balance_before = locked_wallet.cached_balance,
+            balance_after = locked_wallet.cached_balance - total,
+            source_module = "canteen",
+            source_id = order.id
+        )
+
+        update_wallet_balance(wallet.id, locked_wallet.cached_balance - total)
+
+        create_journal_for_canteen_sale(order)
+
+        create_audit_log(cashier, "canteen.rfid.payment", order.id)
+    COMMIT
+
+    print_receipt(order)
+
+    RETURN order
+```
+
+---
+
+# 10. Alur Penerbitan Kartu RFID
+
+## Saat siswa baru mendapat kartu
+
+```text
+Admin login
+Admin pilih siswa
+Admin tempel kartu kosong ke reader/writer
+Sistem membaca UID/token
+Sistem cek apakah kartu sudah pernah dipakai
+Sistem membuat data kartu
+Sistem mapping kartu ke siswa
+Status kartu = active
+Sistem membuat wallet jika belum ada
+Sistem cetak/aktifkan kartu
+```
+
+Pseudo-code:
+
+```text
+FUNCTION issue_rfid_card(admin, device_id, student_id, raw_card_uid):
+    authorize(admin, "rfid.issue")
+    authorize_device(device_id, module = "rfid_management")
+
+    uid_hash = hmac_sha256(SERVER_SECRET, raw_card_uid)
+
+    IF card_uid_hash_exists(uid_hash):
+        REJECT "Kartu sudah terdaftar"
+
+    student = get_student(student_id)
+
+    BEGIN_TRANSACTION
+        deactivate_old_active_cards(student.id)
+
+        card = create_rfid_card(
+            student_id = student.id,
+            card_uid_hash = uid_hash,
+            card_public_id = generate_card_public_id(),
+            card_type = detect_card_type(),
+            status = "active",
+            issued_at = now()
+        )
+
+        ensure_wallet_exists(student.id)
+
+        create_rfid_card_event(card.id, "issued", device_id, admin.id)
+
+        create_audit_log(admin, "rfid.issue", card.id)
+    COMMIT
+
+    RETURN card
+```
+
+---
+
+# 11. Alur Kartu Hilang
+
+Ini wajib ada.
+
+```text
+Orang tua/siswa lapor kartu hilang
+Admin membuka menu kartu siswa
+Admin klik blokir
+Status kartu berubah menjadi lost/blocked
+Kartu tidak bisa dipakai lagi
+Jika ditemukan, hanya admin tertentu yang boleh unblock
+Jika diganti, kartu lama status replaced
+Kartu baru dimapping ke siswa
+Saldo tetap aman karena saldo ada di server
+```
+
+Pseudo-code:
+
+```text
+FUNCTION block_lost_card(admin, card_id, reason):
+    authorize(admin, "rfid.block")
+
+    card = get_card(card_id)
+
+    BEGIN_TRANSACTION
+        update card set status = "lost", blocked_at = now(), blocked_reason = reason
+
+        create_rfid_card_event(
+            card_id = card.id,
+            event_type = "lost_reported",
+            user_id = admin.id
+        )
+
+        create_audit_log(admin, "rfid.block_lost_card", card.id)
+    COMMIT
+```
+
+---
+
+# 12. PC Client RFID: Cara Implementasi yang Mudah
+
+Ada 2 opsi.
+
+## Opsi A — Web App + Local Bridge
+
+Ini paling realistis.
+
+```text
+Browser membuka aplikasi kantin/admin
+RFID reader USB terbaca oleh aplikasi kecil lokal
+Aplikasi lokal mengirim hasil scan ke browser/server
+```
+
+Komponen:
+
+```text
+1. Web app
+2. Local RFID bridge app
+3. Backend API server
+```
+
+Local bridge app:
+
+```text
+- Jalan di Windows PC client
+- Membaca RFID reader via USB/serial/PCSC
+- Mengirim UID ke backend API
+- Bisa juga kirim ke browser via localhost WebSocket
+```
+
+Alur:
+
+```text
+RFID Reader
+  -> Local Bridge App
+  -> Web App / Backend API
+  -> Server Utama
+```
+
+Kelebihan:
+
+```text
+- Web admin tetap mudah dibuat
+- Tidak perlu aplikasi desktop besar
+- Reader USB tetap bisa digunakan
+```
+
+## Opsi B — Aplikasi Desktop Full
+
+```text
+Aplikasi desktop POS kantin
+Langsung baca RFID
+Langsung hit API backend
+```
+
+Kelebihan:
+
+```text
+- Lebih stabil untuk kasir/kantin
+- Cocok untuk printer struk
+```
+
+Kekurangan:
+
+```text
+- Update aplikasi harus dikelola
+- Development lebih banyak
+```
+
+## Rekomendasi
+
+Untuk implementasi awal:
+
+```text
+Web App + Local RFID Bridge
+```
+
+Karena lebih cepat, murah, dan tetap bisa aman kalau backend API kuat.
+
+---
+
+# 13. Security untuk PC Client
+
+PC client adalah titik rawan. Jangan percaya PC client sepenuhnya.
+
+## Wajib diterapkan
+
+```text
+- PC client harus login user
+- Device reader harus terdaftar
+- Tiap device punya device_id
+- Tiap device punya API key/token sendiri
+- API key disimpan aman, bukan di source code
+- Server validasi device aktif
+- Device dibatasi modulnya
+- Device kantin tidak boleh akses top-up
+- Device admin tidak otomatis boleh refund
+- Semua request pakai HTTPS
+- Semua transaksi punya request_id
+- Semua transaksi idempotent
+```
+
+## Contoh pembatasan device
+
+```text
+Reader Kantin 1:
+- hanya boleh canteen.checkout
+- tidak boleh topup
+- tidak boleh refund besar
+- tidak boleh issue card
+
+Reader Admin TU:
+- boleh issue card
+- boleh topup
+- tidak boleh transaksi kantin
+
+Reader Kasir Sekolah:
+- boleh pembayaran SPP
+- boleh topup
+- boleh setor tabungan
+```
+
+---
+
+# 14. Security Backend yang Harus Diperketat
+
+## Endpoint wajib cek object-level authorization
+
+Contoh endpoint berbahaya:
+
+```text
+GET /students/{student_id}/wallet
+POST /wallets/{wallet_id}/topup
+POST /canteen/orders
+POST /rfid/cards/{card_id}/block
+```
+
+Jangan hanya cek:
+
+```text
+user sudah login?
+```
+
+Harus cek:
+
+```text
+user boleh akses siswa ini?
+user boleh akses unit ini?
+user boleh top-up nominal ini?
+device boleh menjalankan modul ini?
+```
+
+OWASP API Security Top 10 menempatkan Broken Object Level Authorization sebagai risiko utama; setiap endpoint yang menerima ID objek harus memvalidasi apakah user berhak mengakses objek tersebut. ([OWASP][4])
+
+---
+
+# 15. Mekanisme Anti Kecurangan
+
+## Rule wajib
+
+```text
+1. Top-up guru dibatasi per transaksi dan per hari.
+2. Petugas kantin tidak bisa top-up.
+3. Refund hanya admin/bendahara.
+4. Void transaksi harus pakai alasan.
+5. Void di atas nominal tertentu perlu approval.
+6. Kartu yang sama tidak boleh transaksi terlalu cepat berulang.
+7. Jika kartu dipakai di dua device hampir bersamaan, blokir sementara.
+8. Jika transaksi terjadi di luar jam sekolah, tandai suspicious.
+9. Jika top-up besar lalu langsung refund, tandai suspicious.
+10. Jika saldo dikoreksi manual, wajib approval dua pihak.
+```
+
+## Tabel fraud flag
+
+```text
+security_flags
+- id uuid pk
+- unit_id uuid
+- flag_type text
+  contoh: repeated_void, unusual_topup, duplicate_card_scan, after_hour_transaction
+- severity text
+  low, medium, high, critical
+- source_module text
+- source_id uuid
+- user_id uuid nullable
+- device_id uuid nullable
+- description text
+- status text
+  open, reviewed, dismissed, resolved
+- created_at timestamp
+```
+
+Pseudo-code:
+
+```text
+FUNCTION check_risk_before_transaction(context):
+    IF same_card_used_in_last_3_seconds(context.card_id):
+        REJECT "Transaksi terlalu cepat"
+
+    IF device_not_allowed(context.device_id, context.module):
+        REJECT "Device tidak diizinkan"
+
+    IF transaction_after_school_hours(context):
+        create_security_flag("after_hour_transaction")
+
+    IF amount_above_role_limit(context.user, context.amount):
+        require_approval()
+
+    IF card_used_from_two_locations_quickly(context.card_id):
+        freeze_card_temporarily()
+        create_security_flag("possible_card_clone")
+```
+
+---
+
+# 16. Offline Mode: Sebaiknya Jangan untuk Pembayaran
+
+Untuk kantin, kadang LAN/server bisa mati. Namun untuk keamanan, saya sarankan:
+
+```text
+Top-up: wajib online
+Pembayaran kantin: wajib online
+Issue kartu: wajib online
+Refund/void: wajib online
+```
+
+Kenapa?
+
+```text
+- Kalau offline, saldo bisa minus
+- Bisa terjadi transaksi dobel
+- Sulit audit
+- Risiko fraud lebih besar
+```
+
+Kalau tetap ingin ada offline mode, batasi ketat:
+
+```text
+- Hanya whitelist siswa tertentu
+- Limit maksimal kecil, misal Rp10.000
+- Hanya 1 device offline
+- Harus sync segera
+- Risiko selisih harus diterima
+```
+
+Tapi rekomendasi saya: **jangan offline dulu**. Lebih baik buat server lokal stabil dengan UPS.
+
+---
+
+# 17. Server Utama: Spesifikasi Minimal
+
+Untuk ribuan user dan POS kantin lokal, jangan pakai PC biasa yang sering dipakai operator.
+
+## Minimal layak
+
+```text
+CPU       : Intel i5/i7 generasi baru atau AMD Ryzen 5/7
+RAM       : 16 GB minimal, 32 GB disarankan
+Storage   : SSD NVMe 1 TB
+Backup    : HDD eksternal/NAS 2 TB+
+Network   : Gigabit LAN
+UPS       : wajib
+OS        : Linux Server lebih disarankan
+Database  : PostgreSQL
+```
+
+## Jika ingin lebih aman
+
+```text
+- Server utama lokal
+- Backup lokal harian
+- Backup cloud terenkripsi
+- Read-only replica/cloud standby jika memungkinkan
+- UPS untuk server, router, switch
+```
+
+---
+
+# 18. Backup dan Disaster Recovery
+
+Wajib ada karena ini data uang.
+
+## Jadwal backup
+
+```text
+Setiap hari:
+- Full database backup malam hari
+- Backup file bukti transaksi/lampiran
+
+Setiap 15-30 menit:
+- WAL archive / incremental backup jika memungkinkan
+
+Setiap minggu:
+- Backup dikirim ke cloud terenkripsi
+
+Setiap bulan:
+- Test restore
+```
+
+## Aturan backup
+
+```text
+- Backup harus terenkripsi
+- Backup tidak boleh hanya di server yang sama
+- Minimal ada 2 lokasi: lokal + cloud/eksternal
+- Restore harus diuji, bukan hanya backup
+```
+
+---
+
+# 19. Validasi Transaksi Keuangan
+
+Semua transaksi uang wajib pakai database transaction dan row lock.
+
+Contoh:
+
+```text
+BEGIN
+  SELECT wallet FOR UPDATE
+  cek saldo
+  insert transaksi
+  insert ledger
+  update saldo
+  insert audit
+COMMIT
+```
+
+Jangan lakukan ini:
+
+```text
+ambil saldo
+hitung di aplikasi
+update saldo
+```
+
+Karena kalau dua kasir memproses bersamaan, saldo bisa salah.
+
+---
+
+# 20. Tambahan PostgreSQL Constraint
+
+Gunakan constraint supaya database ikut menjaga keamanan.
+
+```text
+wallets.cached_balance >= 0
+wallet_ledger.amount > 0
+wallet_transactions.amount > 0
+canteen_orders.total >= 0
+payments.amount > 0
+```
+
+Contoh:
+
+```text
+ALTER TABLE wallets
+ADD CONSTRAINT wallet_balance_not_negative
+CHECK (cached_balance >= 0);
+```
+
+Untuk transaksi ledger:
+
+```text
+ALTER TABLE wallet_ledger
+ADD CONSTRAINT wallet_ledger_amount_positive
+CHECK (amount > 0);
+```
+
+Untuk status:
+
+```text
+ALTER TABLE rfid_cards
+ADD CONSTRAINT rfid_cards_status_check
+CHECK (status IN ('unissued', 'active', 'blocked', 'lost', 'replaced', 'expired', 'damaged'));
+```
+
+---
+
+# 21. Index Tambahan RFID
+
+```text
+CREATE INDEX idx_rfid_cards_student
+ON rfid_cards(student_id);
+
+CREATE UNIQUE INDEX idx_rfid_cards_uid_hash
+ON rfid_cards(card_uid_hash);
+
+CREATE INDEX idx_rfid_cards_status
+ON rfid_cards(status);
+
+CREATE INDEX idx_wallet_ledger_wallet_created
+ON wallet_ledger(wallet_id, created_at DESC);
+
+CREATE INDEX idx_canteen_orders_student_created
+ON canteen_orders(student_id, created_at DESC);
+
+CREATE INDEX idx_rfid_events_card_created
+ON rfid_card_events(card_id, created_at DESC);
+
+CREATE INDEX idx_wallet_transactions_device_created
+ON wallet_transactions(device_id, created_at DESC);
+```
+
+---
+
+# 22. Alur Menu Tambahan
+
+## Menu Admin RFID
+
+```text
+RFID Card Management
+- Daftar kartu
+- Terbitkan kartu
+- Ganti kartu
+- Blokir kartu
+- Aktivasi kartu
+- Riwayat kartu
+- Cek kartu
+- Daftar kartu hilang
+- Daftar kartu rusak
+```
+
+## Menu Top-up
+
+```text
+Top-up Siswa
+- Scan kartu
+- Cari siswa manual
+- Input nominal
+- Metode pembayaran
+- Konfirmasi
+- Cetak struk
+- Riwayat top-up
+```
+
+## Menu Kantin
+
+```text
+POS Kantin
+- Scan kartu
+- Tampilkan siswa
+- Pilih produk
+- Checkout
+- Cetak struk
+- Void request
+- Closing shift
+```
+
+## Menu Orang Tua
+
+```text
+Dompet Anak
+- Saldo
+- Riwayat top-up
+- Riwayat jajan
+- Limit harian
+- Blokir kartu hilang
+- Notifikasi transaksi
+```
+
+---
+
+# 23. Desain API Tambahan
+
+```text
+POST /api/rfid/scan
+POST /api/rfid/cards/issue
+POST /api/rfid/cards/block
+POST /api/rfid/cards/replace
+GET  /api/rfid/cards/{id}/history
+
+POST /api/wallets/topup-rfid
+POST /api/wallets/debit-rfid
+GET  /api/wallets/{id}/ledger
+
+POST /api/canteen/orders/rfid
+POST /api/canteen/orders/{id}/void
+POST /api/canteen/sessions/open
+POST /api/canteen/sessions/close
+
+POST /api/devices/register
+POST /api/devices/heartbeat
+POST /api/devices/{id}/block
+```
+
+Setiap request dari PC client bawa:
+
+```text
+Authorization: Bearer user_token
+X-Device-Id: device_id
+X-Request-Id: uuid
+X-Idempotency-Key: uuid
+X-Signature: hmac_request_signature
+```
+
+---
+
+# 24. Request Signing untuk PC Client
+
+Supaya request dari PC client tidak mudah dipalsukan:
+
+```text
+signature = HMAC_SHA256(device_secret, method + path + body_hash + timestamp)
+```
+
+Backend cek:
+
+```text
+- device_id valid
+- device aktif
+- timestamp tidak terlalu lama
+- signature cocok
+- request_id belum pernah dipakai
+```
+
+Pseudo-code:
+
+```text
+FUNCTION verify_device_request(request):
+    device = get_device(request.headers["X-Device-Id"])
+
+    IF device.status != "active":
+        REJECT
+
+    timestamp = request.headers["X-Timestamp"]
+
+    IF timestamp older than 2 minutes:
+        REJECT
+
+    expected_signature = hmac_sha256(
+        device.secret,
+        request.method + request.path + hash(request.body) + timestamp
+    )
+
+    IF expected_signature != request.headers["X-Signature"]:
+        REJECT
+
+    IF request_id_already_used(request.headers["X-Request-Id"]):
+        REJECT
+
+    mark_request_id_used()
+```
+
+---
+
+# 25. Idempotency Wajib
+
+Ini penting untuk mencegah transaksi dobel ketika jaringan lambat.
+
+Contoh kasus:
+
+```text
+Kasir klik bayar
+Jaringan lambat
+Kasir klik lagi
+Tanpa idempotency, saldo bisa kepotong dua kali
+```
+
+Solusi:
+
+```text
+Setiap transaksi punya X-Idempotency-Key
+Jika request sama dikirim ulang, server mengembalikan hasil transaksi yang sama
+Bukan membuat transaksi baru
+```
+
+Pseudo-code:
+
+```text
+FUNCTION process_with_idempotency(key, payload):
+    existing = find_idempotency_record(key)
+
+    IF existing exists:
+        RETURN existing.response
+
+    BEGIN_TRANSACTION
+        save_idempotency_key(key, status = "processing")
+        result = process_transaction(payload)
+        save_idempotency_response(key, result)
+    COMMIT
+
+    RETURN result
+```
+
+---
+
+# 26. Approval untuk Transaksi Sensitif
+
+Buat aturan seperti ini:
+
+```text
+Top-up oleh guru > Rp50.000
+  -> perlu approval admin/bendahara
+
+Refund kantin
+  -> perlu approval admin kantin/bendahara
+
+Void transaksi
+  -> perlu alasan + approval
+
+Adjustment saldo manual
+  -> wajib approval 2 orang
+
+Ganti kartu siswa
+  -> wajib catat alasan
+
+Unblock kartu hilang
+  -> hanya admin tertentu
+```
+
+Tabel approval:
+
+```text
+approval_requests
+- id uuid pk
+- unit_id uuid
+- request_type text
+- source_module text
+- source_id uuid
+- requested_by uuid
+- approved_by uuid nullable
+- rejected_by uuid nullable
+- status text
+  pending, approved, rejected, cancelled
+- reason text
+- created_at timestamp
+- decided_at timestamp nullable
+```
+
+---
+
+# 27. Jurnal Akuntansi untuk Dompet dan Kantin
+
+## Saat top-up tunai
+
+Saldo dompet siswa sebenarnya adalah titipan/kewajiban sekolah.
+
+```text
+Debit  Kas Kantin/Kas Sekolah              50.000
+Kredit Titipan Saldo Dompet Siswa          50.000
+```
+
+## Saat siswa belanja kantin
+
+```text
+Debit  Titipan Saldo Dompet Siswa          10.000
+Kredit Pendapatan Kantin                   10.000
+```
+
+Jika ingin catat HPP:
+
+```text
+Debit  HPP Kantin                           6.000
+Kredit Persediaan Kantin                    6.000
+```
+
+## Saat refund top-up
+
+```text
+Debit  Titipan Saldo Dompet Siswa          50.000
+Kredit Kas Sekolah                         50.000
+```
+
+Ini penting supaya laporan keuangan benar.
+
+---
+
+# 28. MVP yang Paling Mudah Dibuat
+
+Supaya tidak terlalu besar, buat urutan ini.
+
+## MVP 1 — Dasar Siswa dan Wallet
+
+```text
+- Login admin/kasir/guru
+- Master siswa
+- Master kelas
+- Wallet siswa
+- Top-up manual
+- Ledger wallet
+- Riwayat transaksi
+```
+
+## MVP 2 — RFID
+
+```text
+- Register device reader
+- Issue kartu RFID
+- Scan kartu
+- Mapping kartu ke siswa
+- Blokir/ganti kartu
+- Top-up via RFID
+```
+
+## MVP 3 — Kantin
+
+```text
+- Produk kantin
+- POS kantin
+- Bayar pakai RFID
+- Potong saldo
+- Cetak struk
+- Closing kasir kantin
+```
+
+## MVP 4 — Keamanan dan Audit
+
+```text
+- Role limit guru/admin
+- Approval refund/void
+- Audit log lengkap
+- Anti double transaction
+- Idempotency
+- Device signing
+```
+
+## MVP 5 — Integrasi Keuangan
+
+```text
+- Jurnal otomatis
+- Laporan kantin
+- Laporan wallet
+- Laporan kas
+- Rekonsiliasi
+```
+
+---
+
+# 29. Checklist Implementasi RFID yang Aman
+
+```text
+[ ] Saldo tidak disimpan di kartu
+[ ] Kartu hanya ID/token
+[ ] UID disimpan dalam bentuk HMAC/hash
+[ ] Kartu bisa diblokir
+[ ] Kartu hilang bisa diganti tanpa kehilangan saldo
+[ ] Device reader terdaftar
+[ ] Device punya hak akses terbatas
+[ ] User tetap harus login
+[ ] Guru punya limit top-up
+[ ] Petugas kantin tidak bisa top-up
+[ ] Semua transaksi lewat backend API
+[ ] PC client tidak akses langsung PostgreSQL
+[ ] Semua transaksi pakai database transaction
+[ ] Wallet row di-lock saat transaksi
+[ ] Idempotency key wajib
+[ ] Audit log wajib
+[ ] Refund/void butuh approval
+[ ] Top-up besar butuh re-authentication
+[ ] Laporan transaksi bisa ditelusuri
+[ ] Backup database otomatis
+[ ] Server pakai UPS
+```
+
+---
+
+# 30. Kesimpulan Review
+
+Desain sebelumnya sudah kuat, tetapi untuk implementasi nyata saya akan menambahkan keputusan arsitektur berikut:
+
+```text
+1. Gunakan 1 PC server utama sebagai pusat backend, PostgreSQL, dan web app.
+2. PC client hanya sebagai terminal kasir/admin/kantin.
+3. RFID reader/writer terhubung ke PC client.
+4. PC client tidak boleh langsung akses database.
+5. Kartu RFID jangan menyimpan saldo.
+6. Saldo wajib ada di server dan dicatat dengan ledger.
+7. Untuk murah, UID-only bisa dipakai sebagai MVP dengan limit kecil.
+8. Untuk aman jangka panjang, gunakan MIFARE DESFire EV3.
+9. Semua transaksi harus online ke server utama.
+10. Semua request harus dicek user, device, role, unit, limit, dan status kartu.
+```
+
+Arahan paling aman dan mudah:
+
+```text
+Backend:
+Laravel/NestJS + PostgreSQL
+
+Frontend:
+Web admin + web kasir + web kantin
+
+RFID:
+Local bridge app kecil di PC client
+
+Database:
+Wallet ledger immutable
+
+Security:
+RBAC + device authorization + idempotency + audit log + approval
+```
+
+Dengan desain ini, sistem tetap **mudah diimplementasikan**, tetapi tidak mengorbankan keamanan transaksi siswa.
+
+[1]: https://www.nxp.com/products/rfid-nfc/mifare-hf/mifare-classic%3AMC_41863?utm_source=chatgpt.com "MIFARE Classic - NXP Semiconductors"
+[2]: https://www.nxp.com/products/MF3DHx3?utm_source=chatgpt.com "MIFARE DESFire EV3 | Secure Contactless IC | NXP Semiconductors"
+[3]: https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html?utm_source=chatgpt.com "Authentication - OWASP Cheat Sheet Series"
+[4]: https://owasp.org/API-Security/editions/2023/en/0xa1-broken-object-level-authorization/?utm_source=chatgpt.com "API1:2023 Broken Object Level Authorization - OWASP API Security Top 10"

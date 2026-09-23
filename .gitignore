@@ -1,0 +1,76 @@
+# Secrets / environment
+.env
+.env.*
+!.env.example
+backend/.env
+frontend/.env
+*.pem
+*.key
+*.token
+*.keystore
+*.jks
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.hypothesis/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+backend/.venv/
+
+# Node / frontend
+node_modules/
+frontend/node_modules/
+frontend/dist/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+
+# Android / Gradle
+android/.gradle/
+android/**/build/
+android/local.properties
+android/.hypothesis/
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+*.iml
+
+# Runtime / logs / local data
+logs/
+log/
+backend/log/
+frontend/log/
+*.log
+*.pid
+*.sock
+.cache/
+tmp/
+temp/
+backups/
+*.sql
+*.sql.gz
+*.dump
+*.db
+*.sqlite
+*.sqlite3
+
+# Generated downloadable app artifacts
+backend/static/download/*.apk
+
+# Local assistant/project memory
+memory.md
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

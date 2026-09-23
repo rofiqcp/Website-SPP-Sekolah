@@ -1,0 +1,2662 @@
+ARAHAN LENGKAP FRONTEND SISTEM TERPADU EL YAOMY
+Web Desktop, Web HP, Android WebView, React HTML, Mobile Friendly, Aman, Fleksibel, Mudah Digunakan
+
+Versi dokumen: 1.0
+Target teknologi:
+- Frontend: React + HTML + CSS responsif
+- Backend: Python API
+- Database: PostgreSQL
+- Platform akses: desktop browser, mobile browser, Android WebView
+- Prioritas: mudah digunakan semua role, aman, ringan, konsisten, siap dikembangkan
+
+=====================================================================
+1. TUJUAN UTAMA FRONTEND
+=====================================================================
+
+Frontend harus menjadi pintu utama semua pengguna untuk memakai sistem keuangan, sekolah, kantin, RFID, tabungan, aset, laporan, dan approval.
+
+Tujuan utama:
+1. Satu tampilan yang konsisten untuk semua modul.
+2. Bisa dipakai di laptop/PC, tablet, HP browser, dan Android WebView.
+3. Setiap role hanya melihat menu dan data yang memang boleh diakses.
+4. Semua transaksi penting dibuat mudah tetapi tetap aman.
+5. UI tidak membingungkan user non-teknis.
+6. Desain elegan, minimalis, cepat, dan rapi.
+7. Semua fitur backend bisa diakses dari UI sesuai role.
+8. Frontend tidak boleh menyimpan data sensitif secara sembarangan.
+9. Semua aksi penting punya konfirmasi, validasi, dan feedback jelas.
+10. Sistem tetap nyaman dipakai kasir, bendahara, guru, orang tua, siswa, kepala sekolah, admin, auditor, petugas kantin, dan petugas aset.
+
+Prinsip paling penting:
+- User tidak perlu paham struktur database.
+- User tidak perlu hafal menu rumit.
+- User cukup mengikuti alur kerja yang jelas.
+- Semua tombol penting harus mudah ditemukan.
+- Semua error harus dijelaskan dengan bahasa manusia.
+- Semua transaksi uang harus transparan dan bisa diaudit.
+
+=====================================================================
+2. TARGET PENGGUNA DAN KEBUTUHAN UI PER ROLE
+=====================================================================
+
+2.1 Super Admin Yayasan
+Kebutuhan:
+- Kelola semua unit sekolah.
+- Kelola user, role, permission.
+- Kelola master data global.
+- Lihat dashboard konsolidasi.
+- Pantau audit log dan keamanan.
+- Konfigurasi sistem, pembayaran, terminal, RFID, limit, notifikasi.
+
+UI utama:
+- Dashboard yayasan.
+- Sidebar lengkap di desktop.
+- Menu pengaturan sistem.
+- Filter unit di hampir semua halaman.
+- Warning jika ada aktivitas mencurigakan.
+
+2.2 Admin Unit Sekolah
+Kebutuhan:
+- Kelola siswa, kelas, pegawai.
+- Kelola tagihan unit.
+- Lihat laporan unit.
+- Bantuan operasional harian.
+
+UI utama:
+- Dashboard unit.
+- Menu data siswa cepat.
+- Tombol tambah siswa, impor Excel, generate tagihan.
+- Tampilan tabel yang mudah dicari dan difilter.
+
+2.3 Bendahara Yayasan
+Kebutuhan:
+- Laporan konsolidasi.
+- Jurnal, buku besar, neraca, arus kas.
+- Approval transaksi besar.
+- Rekonsiliasi bank.
+- RAB dan realisasi.
+
+UI utama:
+- Dashboard keuangan.
+- Grafik kas/bank/piutang/tunggakan.
+- Menu laporan dengan filter kuat.
+- Halaman approval dengan prioritas.
+
+2.4 Bendahara Unit
+Kebutuhan:
+- Buat tagihan.
+- Terima pembayaran.
+- Kelola kas/bank unit.
+- Laporan penerimaan dan tunggakan.
+
+UI utama:
+- Ringkasan penerimaan hari ini.
+- Tunggakan per kelas.
+- Tombol bayar cepat.
+- Export laporan.
+
+2.5 Kepala Sekolah
+Kebutuhan:
+- Lihat dashboard.
+- Approval RAB/pengeluaran.
+- Lihat tunggakan dan laporan penting.
+- Tidak perlu menu terlalu teknis.
+
+UI utama:
+- Dashboard ringkas.
+- Kartu approval menunggu.
+- Grafik kondisi unit.
+- Menu laporan baca saja.
+
+2.6 Wali Kelas
+Kebutuhan:
+- Lihat siswa kelasnya.
+- Lihat tunggakan kelas.
+- Lihat tabungan kelas.
+- Bisa melakukan top-up jika diberi izin.
+- Kirim pengingat ke wali murid jika diizinkan.
+
+UI utama:
+- Dashboard kelas.
+- Daftar siswa berbentuk kartu di HP.
+- Filter status tagihan.
+- Tombol kontak wali murid jika diizinkan.
+
+2.7 Guru/Pegawai
+Kebutuhan:
+- Lihat data pribadi.
+- Lihat saldo tabungan pegawai.
+- Lihat transaksi pribadi.
+- Approval kecil jika punya hak.
+
+UI utama:
+- Dashboard pribadi.
+- Riwayat transaksi.
+- Menu sederhana.
+
+2.8 Kasir Sekolah
+Kebutuhan:
+- Buka shift.
+- Cari siswa.
+- Terima pembayaran.
+- Scan kartu/barcode.
+- Cetak struk.
+- Closing kasir.
+- Void/refund dengan approval.
+
+UI utama:
+- Mode kasir fullscreen.
+- Tombol besar.
+- Pencarian cepat siswa.
+- Scan RFID/barcode otomatis fokus.
+- Ringkasan keranjang/tagihan.
+- Tombol bayar jelas.
+
+2.9 Petugas Kantin
+Kebutuhan:
+- POS penjualan.
+- Pilih produk cepat.
+- Scan RFID siswa.
+- Cek saldo.
+- Checkout.
+- Cetak struk.
+- Closing shift kantin.
+
+UI utama:
+- Grid produk besar.
+- Keranjang kanan di desktop.
+- Keranjang bawah di HP/tablet.
+- Tombol bayar besar.
+- Status reader RFID jelas.
+- Mode cepat untuk jam istirahat.
+
+2.10 Petugas Gudang/Aset
+Kebutuhan:
+- Kelola barang, stok, aset.
+- Scan QR/barcode aset.
+- Stock opname.
+- Mutasi barang.
+- Laporan stok dan aset.
+
+UI utama:
+- Form barang sederhana.
+- Scan QR dari kamera HP jika diizinkan.
+- Checklist opname mobile friendly.
+- Foto aset mudah upload.
+
+2.11 Orang Tua/Wali
+Kebutuhan:
+- Lihat tagihan anak.
+- Bayar online.
+- Lihat riwayat pembayaran.
+- Lihat saldo tabungan/dompet.
+- Lihat riwayat kantin anak.
+- Atur limit jajan jika diizinkan.
+- Blokir kartu hilang.
+
+UI utama:
+- Home mobile-first.
+- Kartu anak.
+- Total tagihan jelas.
+- Tombol Bayar Sekarang.
+- Riwayat transaksi sederhana.
+- Bahasa mudah dipahami.
+
+2.12 Siswa
+Kebutuhan:
+- Lihat saldo.
+- Lihat QR/ID siswa.
+- Lihat riwayat belanja.
+- Lihat limit harian.
+
+UI utama:
+- Sangat sederhana.
+- Saldo besar di atas.
+- Riwayat transaksi terbaru.
+- Tidak menampilkan menu admin.
+
+2.13 Auditor
+Kebutuhan:
+- Read-only laporan.
+- Audit trail.
+- Jurnal.
+- Export data.
+- Tidak boleh mengubah data.
+
+UI utama:
+- Mode baca saja.
+- Label Read Only.
+- Filter tanggal/unit/modul.
+- Drill-down dari laporan ke bukti transaksi.
+
+=====================================================================
+3. PRINSIP DESAIN UI/UX
+=====================================================================
+
+3.1 Minimalis
+- Gunakan ruang kosong yang cukup.
+- Hindari terlalu banyak warna.
+- Hindari terlalu banyak tombol dalam satu layar.
+- Tampilkan fitur utama sesuai konteks.
+- Fitur lanjutan masuk ke menu More atau Lainnya.
+
+3.2 Konsisten
+- Posisi tombol Simpan selalu di kanan bawah atau area akhir form.
+- Tombol batal/kembali selalu di kiri atau sekunder.
+- Warna status sama di semua modul.
+- Format tanggal, uang, dan nomor transaksi konsisten.
+
+3.3 Mobile-first
+- Semua halaman harus tetap bisa dipakai di layar 360px.
+- Tombol minimal tinggi 44px agar mudah disentuh.
+- Input tidak terlalu kecil.
+- Tabel desktop harus berubah menjadi card/list di HP.
+- Menu sidebar desktop berubah menjadi bottom navigation atau drawer di HP.
+
+3.4 Role-first
+- Jangan tampilkan menu yang tidak boleh dipakai user.
+- Jangan hanya disable tombol; lebih baik sembunyikan fitur yang tidak relevan.
+- Jika fitur muncul tetapi butuh izin tambahan, tampilkan pesan jelas.
+
+3.5 Error yang manusiawi
+Contoh buruk:
+- Error 403.
+- Validation failed.
+- Internal server error.
+
+Contoh baik:
+- Anda tidak punya izin untuk membuka data siswa ini.
+- Nominal top-up melebihi limit harian guru.
+- Saldo siswa tidak cukup untuk transaksi ini.
+- Koneksi terputus. Transaksi belum diproses. Silakan coba lagi.
+
+3.6 Feedback langsung
+Setiap aksi harus memberi respons:
+- Loading saat proses.
+- Sukses saat berhasil.
+- Error saat gagal.
+- Peringatan saat data berisiko.
+- Konfirmasi sebelum aksi besar.
+
+3.7 Tidak membingungkan pengguna
+- Jangan memakai istilah teknis untuk orang tua/siswa.
+- Gunakan istilah sederhana: Tagihan, Bayar, Saldo, Riwayat, Kartu Hilang.
+- Istilah teknis seperti jurnal, COA, rekonsiliasi hanya muncul untuk bendahara/admin.
+
+=====================================================================
+4. RESPONSIVE DESIGN UNTUK DESKTOP, WEB HP, ANDROID WEBVIEW
+=====================================================================
+
+4.1 Breakpoint yang disarankan
+Gunakan breakpoint:
+- xs: 0 sampai 359px, HP kecil.
+- sm: 360 sampai 479px, HP umum.
+- md: 480 sampai 767px, HP besar/tablet kecil.
+- lg: 768 sampai 1023px, tablet/desktop kecil.
+- xl: 1024 sampai 1279px, laptop.
+- 2xl: 1280px ke atas, desktop besar.
+
+Pseudocode CSS:
+
+@media (max-width: 767px):
+    gunakan mobile layout
+    sidebar disembunyikan
+    tampilkan bottom navigation
+    tabel berubah menjadi kartu
+    form menjadi 1 kolom
+
+@media (min-width: 768px):
+    gunakan tablet/desktop layout
+    sidebar bisa tampil collapsible
+    tabel normal
+    form bisa 2 kolom
+
+@media (min-width: 1024px):
+    gunakan desktop penuh
+    sidebar tetap
+    halaman laporan bisa 3 kolom/filter samping
+
+4.2 Layout desktop
+Struktur:
+- Topbar: nama unit, search, notifikasi, profil.
+- Sidebar: menu utama sesuai role.
+- Content area: konten modul.
+- Right panel opsional: detail, approval, filter.
+
+Contoh:
+
++-----------------------------------------------------------+
+| Topbar: Unit | Search | Notifikasi | Profil              |
++-------------+---------------------------------------------+
+| Sidebar     | Content                                     |
+| Menu        | Dashboard / Tabel / Form / Laporan          |
+|             |                                             |
++-------------+---------------------------------------------+
+
+4.3 Layout HP/browser mobile
+Struktur:
+- Header kecil: judul halaman dan profil.
+- Content: kartu-kartu informasi.
+- Bottom navigation: menu utama paling sering dipakai.
+- Floating action button untuk aksi utama.
+
+Contoh:
+
++-----------------------------+
+| Header: Tagihan Anak        |
++-----------------------------+
+| Card anak                   |
+| Card tagihan                |
+| Tombol bayar                |
+| Riwayat                     |
++-----------------------------+
+| Bottom nav: Home Tagihan... |
++-----------------------------+
+
+4.4 Layout Android WebView
+Android WebView harus diperlakukan seperti mobile browser, tetapi ada tambahan:
+- Jangan bergantung pada address bar browser.
+- Harus punya tombol kembali di aplikasi atau handle back.
+- Pastikan tinggi layar memakai dynamic viewport.
+- Hindari popup window yang membuka tab baru.
+- Link eksternal harus dibuka di browser luar.
+- Download harus diberi feedback.
+- Jangan meminta permission yang tidak perlu.
+
+CSS penting untuk mobile/WebView:
+
+html, body, #root:
+    min-height: 100%;
+    margin: 0;
+    overscroll-behavior: none;
+
+.app-shell:
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+
+.safe-area:
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+
+Gunakan 100dvh, bukan hanya 100vh, agar lebih aman di browser HP modern.
+
+4.5 Perubahan tabel menjadi kartu di HP
+Desktop:
+- Tampilkan tabel lengkap.
+
+HP:
+- Tampilkan kartu per item.
+- Info utama di atas.
+- Status sebagai badge.
+- Aksi sebagai tombol kecil.
+
+Contoh invoice di desktop:
+| No Invoice | Siswa | Kelas | Total | Dibayar | Status | Aksi |
+
+Contoh invoice di HP:
+[INV-2026-001]
+Ahmad - Kelas 5A
+Total: Rp500.000
+Dibayar: Rp200.000
+Status: Belum Lunas
+[Tampilkan] [Bayar]
+
+=====================================================================
+5. DESAIN SISTEM VISUAL
+=====================================================================
+
+5.1 Warna
+Gunakan warna terbatas:
+- Primary: hijau/teal/biru gelap yang mencerminkan lembaga pendidikan.
+- Secondary: abu lembut.
+- Success: hijau.
+- Warning: kuning/oranye.
+- Danger: merah.
+- Info: biru.
+- Background: putih atau abu sangat muda.
+
+Aturan:
+- Jangan gunakan lebih dari 1 warna utama.
+- Warna merah hanya untuk bahaya, gagal, hapus, blokir.
+- Warna hijau untuk sukses, aktif, lunas.
+- Warna kuning/oranye untuk menunggu, jatuh tempo, perlu perhatian.
+- Warna biru untuk informasi.
+
+5.2 Tipografi
+Gunakan font yang mudah dibaca:
+- Inter, system-ui, Arial, atau sans-serif standar.
+
+Ukuran:
+- Judul halaman desktop: 24 sampai 28px.
+- Judul halaman mobile: 18 sampai 22px.
+- Body: 14 sampai 16px.
+- Caption: 12 sampai 13px.
+- Tombol: minimal 14px.
+
+5.3 Spacing
+Gunakan spacing konsisten:
+- 4px untuk jarak sangat kecil.
+- 8px untuk jarak kecil.
+- 12px untuk elemen berdekatan.
+- 16px untuk padding card.
+- 24px untuk section.
+- 32px untuk pemisah besar.
+
+5.4 Komponen utama
+Komponen wajib:
+- AppShell
+- Topbar
+- Sidebar
+- MobileHeader
+- BottomNav
+- PageHeader
+- Breadcrumb
+- StatCard
+- DataTable
+- MobileCardList
+- FilterPanel
+- SearchInput
+- DateRangePicker
+- MoneyInput
+- ConfirmDialog
+- PinDialog
+- ReAuthDialog
+- Toast
+- AlertBanner
+- EmptyState
+- ErrorState
+- LoadingSkeleton
+- ReceiptPreview
+- PrintButton
+- StatusBadge
+- AuditTimeline
+- ApprovalTimeline
+
+5.5 Status badge
+Status harus konsisten:
+- Aktif: hijau
+- Nonaktif: abu
+- Menunggu: kuning
+- Berhasil: hijau
+- Gagal: merah
+- Dibatalkan: abu gelap
+- Diblokir: merah
+- Sebagian dibayar: biru
+- Terlambat: oranye/merah
+- Draft: abu
+- Posted: hijau
+- Locked: ungu/gelap
+
+=====================================================================
+6. STRUKTUR FRONTEND REACT
+=====================================================================
+
+6.1 Struktur folder yang disarankan
+
+src/
+  app/
+    App.tsx
+    router.tsx
+    providers.tsx
+    config.ts
+  assets/
+  components/
+    common/
+    layout/
+    forms/
+    table/
+    feedback/
+    money/
+    print/
+  features/
+    auth/
+    dashboard/
+    students/
+    billing/
+    payments/
+    wallet/
+    savings/
+    canteen/
+    cashier/
+    rfid/
+    finance/
+    journal/
+    reports/
+    budget/
+    inventory/
+    assets/
+    approvals/
+    notifications/
+    settings/
+    users/
+    audit/
+  hooks/
+  lib/
+    api/
+    auth/
+    permissions/
+    formatting/
+    validation/
+    storage/
+    security/
+  styles/
+    globals.css
+    tokens.css
+  types/
+  utils/
+
+6.2 Prinsip feature-based
+Setiap modul punya folder sendiri agar mudah dirawat.
+
+Contoh billing:
+
+features/billing/
+  pages/
+    InvoiceListPage.tsx
+    InvoiceDetailPage.tsx
+    GenerateInvoicePage.tsx
+  components/
+    InvoiceCard.tsx
+    InvoiceTable.tsx
+    InvoiceStatusBadge.tsx
+    GenerateInvoiceForm.tsx
+  hooks/
+    useInvoices.ts
+    useGenerateInvoices.ts
+  api/
+    billingApi.ts
+  types.ts
+
+6.3 App providers
+Provider utama:
+- QueryClientProvider untuk data fetching/cache.
+- AuthProvider untuk user session.
+- PermissionProvider untuk permission.
+- ThemeProvider untuk mode light/dark jika dipakai.
+- ToastProvider untuk notifikasi.
+- ModalProvider untuk dialog global.
+- FeatureFlagProvider jika fitur bertahap.
+
+Pseudocode:
+
+FUNCTION AppProviders(children):
+    RETURN QueryClientProvider
+        AuthProvider
+            PermissionProvider
+                ToastProvider
+                    ModalProvider
+                        children
+
+6.4 Routing
+Gunakan route berdasarkan modul dan role.
+
+Contoh route:
+- /login
+- /dashboard
+- /students
+- /students/:id
+- /billing/invoices
+- /billing/generate
+- /payments
+- /cashier
+- /canteen/pos
+- /wallets
+- /rfid/cards
+- /finance/cash-bank
+- /journal
+- /reports
+- /budget
+- /inventory
+- /assets
+- /approvals
+- /settings
+
+Pseudocode route guard:
+
+FUNCTION ProtectedRoute(requiredPermission, children):
+    user = useAuthUser()
+
+    IF user is loading:
+        RETURN LoadingScreen
+
+    IF user is not logged in:
+        REDIRECT /login
+
+    IF requiredPermission exists AND user lacks permission:
+        RETURN ForbiddenPage
+
+    RETURN children
+
+=====================================================================
+7. AUTHENTICATION DAN SESSION UI
+=====================================================================
+
+7.1 Halaman login
+Login harus sederhana:
+- Logo yayasan.
+- Nama aplikasi.
+- Input email/phone/username.
+- Input password.
+- Tombol masuk.
+- Link lupa password.
+- Info keamanan singkat.
+
+Jangan tampilkan:
+- Error terlalu teknis.
+- Stack trace.
+- Detail apakah email ada atau tidak.
+
+Pesan login gagal:
+- Email/nomor atau password tidak sesuai.
+
+7.2 MFA/OTP
+Untuk role sensitif:
+- Super admin.
+- Bendahara.
+- Admin keuangan.
+- User yang melakukan refund/void/adjustment.
+
+Flow:
+1. User login.
+2. Backend meminta OTP/MFA jika dibutuhkan.
+3. Frontend menampilkan halaman verifikasi.
+4. Setelah berhasil, user masuk dashboard.
+
+Pseudocode:
+
+FUNCTION login(form):
+    response = api.post('/auth/login', form)
+
+    IF response.status == 'mfa_required':
+        navigate('/verify-mfa', { challenge_id })
+    ELSE:
+        setSession(response.user)
+        navigate('/dashboard')
+
+7.3 Session timeout
+UI harus menangani:
+- Session habis.
+- Token expired.
+- User dikunci.
+- Role berubah.
+
+Jika session habis:
+- Tampilkan dialog: Sesi Anda berakhir, silakan masuk kembali.
+- Jangan hilangkan data form langsung jika bisa disimpan sementara secara aman.
+
+7.4 Re-authentication
+Untuk aksi sensitif:
+- Top-up besar.
+- Refund.
+- Void transaksi.
+- Blokir/unblock kartu.
+- Ubah role user.
+- Hapus data master.
+- Posting/unposting jurnal.
+- Reopen periode.
+
+UI:
+- Tampilkan dialog input password/PIN/OTP.
+- Jelaskan kenapa diminta.
+
+Pseudocode:
+
+FUNCTION sensitiveAction(action):
+    IF action.requires_reauth:
+        result = showReAuthDialog()
+        IF result.failed:
+            STOP
+
+    executeAction()
+
+=====================================================================
+8. PERMISSION DAN ROLE-BASED UI
+=====================================================================
+
+8.1 Jangan hardcode role saja
+Jangan hanya:
+IF user.role == 'admin'
+
+Lebih baik:
+IF can(user, 'billing.invoice.create')
+
+Alasan:
+- Role bisa berubah.
+- Satu user bisa punya banyak role.
+- Permission lebih fleksibel.
+
+8.2 Permission helper
+
+FUNCTION can(user, permission, object = null):
+    IF user has permission globally:
+        RETURN true
+
+    IF object exists:
+        RETURN user has permission for object.unit_id/class_id/student_id
+
+    RETURN false
+
+8.3 Menu berdasarkan permission
+
+FUNCTION buildMenu(user):
+    menus = []
+
+    IF can(user, 'dashboard.view'):
+        menus.add(Dashboard)
+
+    IF can(user, 'student.view'):
+        menus.add(Siswa)
+
+    IF can(user, 'billing.invoice.view'):
+        menus.add(Tagihan)
+
+    IF can(user, 'canteen.pos.access'):
+        menus.add(POS Kantin)
+
+    IF can(user, 'report.finance.view'):
+        menus.add(Laporan)
+
+    RETURN menus
+
+8.4 Object-level UI
+Contoh:
+- Wali kelas hanya melihat kelasnya.
+- Orang tua hanya melihat anaknya.
+- Bendahara unit hanya unitnya.
+- Auditor read-only.
+
+Frontend harus tetap sembunyikan data tidak relevan, tetapi validasi terakhir wajib di backend.
+
+=====================================================================
+9. DATA FETCHING, CACHE, DAN ERROR HANDLING
+=====================================================================
+
+9.1 API client
+Semua request harus lewat satu apiClient.
+
+Tugas apiClient:
+- Menambah header CSRF jika diperlukan.
+- Mengirim cookie otomatis.
+- Menangani 401.
+- Menangani 403.
+- Menangani 422 validation error.
+- Menangani 500 tanpa membocorkan detail.
+- Menambahkan request_id/idempotency_key untuk transaksi tertentu.
+
+Pseudocode:
+
+FUNCTION apiRequest(method, url, body, options):
+    request_id = generateUUID()
+
+    headers = {
+        'Content-Type': 'application/json',
+        'X-Request-Id': request_id
+    }
+
+    IF options.idempotent:
+        headers['Idempotency-Key'] = options.idempotencyKey OR generateUUID()
+
+    response = fetch(url, {
+        method,
+        credentials: 'include',
+        headers,
+        body: JSON.stringify(body)
+    })
+
+    IF response.status == 401:
+        showSessionExpiredDialog()
+        THROW AuthError
+
+    IF response.status == 403:
+        THROW ForbiddenError
+
+    IF response.status == 422:
+        THROW ValidationError(response.errors)
+
+    IF response.status >= 500:
+        THROW ServerError('Server sedang bermasalah. Silakan coba lagi.')
+
+    RETURN response.json()
+
+9.2 Cache
+Gunakan cache untuk data baca:
+- Dashboard.
+- Daftar siswa.
+- Daftar invoice.
+- Produk kantin.
+- Master data.
+
+Jangan cache sembarangan untuk:
+- Saldo wallet setelah transaksi.
+- Status pembayaran realtime.
+- Approval sensitif.
+- Audit log.
+
+Setelah transaksi berhasil:
+- Invalidate cache saldo.
+- Invalidate cache invoice.
+- Invalidate dashboard.
+- Invalidate laporan terkait.
+
+9.3 Loading state
+Gunakan:
+- Skeleton untuk list/tabel.
+- Spinner kecil untuk tombol yang sedang proses.
+- Full screen loading hanya saat pertama app dibuka.
+
+9.4 Empty state
+Contoh:
+- Belum ada tagihan.
+- Belum ada transaksi hari ini.
+- Tidak ada data sesuai filter.
+
+Berikan aksi:
+- Buat tagihan.
+- Ubah filter.
+- Tambah data.
+
+9.5 Error state
+Jika gagal memuat data:
+- Tampilkan pesan jelas.
+- Tampilkan tombol coba lagi.
+- Jangan membuat layar kosong.
+
+=====================================================================
+10. FORM DAN VALIDASI
+=====================================================================
+
+10.1 Aturan umum form
+- Label selalu terlihat, jangan hanya placeholder.
+- Input uang otomatis format Rupiah.
+- Tanggal pakai date picker tetapi tetap bisa diketik.
+- Required field diberi tanda jelas.
+- Error muncul dekat field.
+- Tombol Simpan disabled saat proses.
+- Tekan Enter tidak boleh memicu transaksi uang tanpa konfirmasi.
+
+10.2 Money input
+Aturan:
+- Simpan sebagai integer rupiah.
+- Tampilkan dengan format Rp.
+- Tidak boleh negatif kecuali modul koreksi tertentu.
+- Maksimal mengikuti limit role.
+
+Pseudocode:
+
+FUNCTION MoneyInput(value):
+    displayValue = formatRupiah(value)
+
+    ON change(text):
+        numeric = parseRupiah(text)
+        IF numeric < 0:
+            showError('Nominal tidak boleh negatif')
+        ELSE:
+            setValue(numeric)
+
+10.3 Validasi frontend vs backend
+Frontend:
+- Untuk pengalaman user cepat.
+- Mencegah input salah umum.
+
+Backend:
+- Sumber validasi final.
+- Tidak boleh percaya frontend.
+
+10.4 Form transaksi sensitif
+Untuk pembayaran, top-up, refund, void:
+- Tampilkan ringkasan sebelum submit.
+- Tampilkan nama siswa.
+- Tampilkan nominal.
+- Tampilkan metode.
+- Tampilkan kasir/device.
+- Minta konfirmasi.
+
+Contoh konfirmasi top-up:
+Anda akan melakukan top-up:
+Siswa: Ahmad Fauzi
+Kelas: 5A
+Nominal: Rp50.000
+Metode: Tunai
+Petugas: Bu Ani
+
+[Tidak, batalkan] [Ya, proses top-up]
+
+=====================================================================
+11. NAVIGASI UTAMA
+=====================================================================
+
+11.1 Desktop sidebar
+Sidebar berisi:
+- Dashboard
+- Data Siswa
+- Tagihan
+- Pembayaran
+- Tabungan/Dompet
+- Kasir
+- Kantin
+- RFID/Kartu
+- Keuangan
+- Jurnal
+- RAB
+- Inventaris
+- Aset
+- Laporan
+- Approval
+- Audit
+- Pengaturan
+
+Menu tampil sesuai permission.
+
+11.2 Mobile bottom navigation
+Maksimal 5 item:
+- Home
+- Tagihan/Transaksi
+- Bayar/POS
+- Laporan/Riwayat
+- Menu
+
+Isi berubah sesuai role.
+
+Contoh orang tua:
+- Home
+- Tagihan
+- Bayar
+- Riwayat
+- Akun
+
+Contoh petugas kantin:
+- POS
+- Produk
+- Shift
+- Riwayat
+- Menu
+
+Contoh bendahara:
+- Home
+- Pembayaran
+- Approval
+- Laporan
+- Menu
+
+11.3 Menu drawer mobile
+Menu lengkap ditaruh di drawer:
+- Dibuka dari tombol Menu.
+- Ada search menu.
+- Dikelompokkan per kategori.
+
+11.4 Breadcrumb desktop
+Untuk halaman detail:
+Dashboard > Tagihan > INV-2026-0001
+
+Di mobile breadcrumb bisa disembunyikan, cukup tombol kembali.
+
+=====================================================================
+12. DASHBOARD PER ROLE
+=====================================================================
+
+12.1 Dashboard super admin
+Komponen:
+- Total unit aktif.
+- Total siswa aktif.
+- Total penerimaan bulan ini.
+- Total piutang/tunggakan.
+- Saldo kas/bank konsolidasi.
+- Transaksi mencurigakan.
+- Approval menunggu.
+- Grafik penerimaan per unit.
+
+12.2 Dashboard bendahara
+Komponen:
+- Penerimaan hari ini.
+- Pengeluaran hari ini.
+- Saldo kas/bank.
+- Piutang siswa.
+- Pembayaran pending.
+- Rekonsiliasi belum selesai.
+- RAB vs realisasi.
+
+12.3 Dashboard kepala sekolah
+Komponen:
+- Ringkasan unit.
+- Tunggakan per kelas.
+- Approval menunggu.
+- Penerimaan bulan ini.
+- Pengeluaran bulan ini.
+- Notifikasi penting.
+
+12.4 Dashboard wali kelas
+Komponen:
+- Jumlah siswa kelas.
+- Siswa menunggak.
+- Total tunggakan kelas.
+- Saldo tabungan kelas.
+- Riwayat transaksi terbaru.
+
+12.5 Dashboard orang tua
+Komponen:
+- Kartu anak.
+- Total tagihan belum dibayar.
+- Tombol bayar.
+- Saldo/dompet anak.
+- Riwayat kantin terbaru.
+- Tombol blokir kartu hilang.
+
+12.6 Dashboard siswa
+Komponen:
+- Saldo.
+- Limit harian.
+- Riwayat belanja.
+- Kartu digital/QR jika ada.
+
+12.7 Dashboard kasir/kantin
+Komponen:
+- Status shift.
+- Total transaksi hari ini.
+- Total tunai.
+- Total non-tunai.
+- Tombol buka/tutup shift.
+- Shortcut POS/pembayaran.
+
+=====================================================================
+13. MODUL TAGIHAN SISWA
+=====================================================================
+
+13.1 Halaman daftar tagihan
+Desktop:
+- Filter unit, kelas, periode, status, jenis tagihan.
+- Search siswa/no invoice.
+- Tabel invoice.
+- Bulk action: publish, kirim reminder, export.
+
+Mobile:
+- Filter ringkas.
+- List kartu invoice.
+- Tombol bayar/detail.
+
+13.2 Detail tagihan
+Tampilkan:
+- Nomor invoice.
+- Nama siswa.
+- Kelas.
+- Periode.
+- Item tagihan.
+- Diskon/denda.
+- Total.
+- Dibayar.
+- Sisa.
+- Riwayat pembayaran.
+- Status.
+- Tombol bayar, cetak, kirim WA, batalkan jika boleh.
+
+13.3 Generate tagihan
+Flow:
+1. Pilih unit.
+2. Pilih tahun ajaran/periode.
+3. Pilih kelas/angkatan/siswa.
+4. Pilih jenis tagihan.
+5. Preview jumlah siswa dan total.
+6. Validasi duplikasi.
+7. Konfirmasi generate.
+8. Tampilkan hasil.
+
+Pseudocode frontend:
+
+FUNCTION GenerateInvoicePage():
+    step = 1
+    form = {}
+
+    STEP 1: choose target
+    STEP 2: choose billing rule
+    STEP 3: preview
+    STEP 4: confirm
+
+    ON preview:
+        data = api.post('/billing/preview', form)
+        showPreview(data)
+
+    ON submit:
+        confirm('Generate tagihan?')
+        api.post('/billing/generate', form, idempotent=true)
+        showSuccess()
+        navigate('/billing/invoices')
+
+13.4 Reminder tagihan
+UI:
+- Pilih invoice atau kelas.
+- Preview pesan.
+- Pilih channel: WhatsApp/SMS/email/notifikasi app.
+- Kirim.
+- Tampilkan hasil terkirim/gagal.
+
+=====================================================================
+14. MODUL PEMBAYARAN
+=====================================================================
+
+14.1 Pembayaran kasir
+Flow:
+1. Kasir buka shift.
+2. Cari/scan siswa.
+3. Pilih invoice.
+4. Input metode bayar.
+5. Input nominal.
+6. Tampilkan ringkasan.
+7. Konfirmasi.
+8. Proses.
+9. Cetak/kirim struk.
+
+UI desktop kasir:
+- Kiri: pencarian siswa dan daftar tagihan.
+- Kanan: ringkasan pembayaran.
+- Tombol besar Proses Pembayaran.
+
+UI mobile/tablet:
+- Stepper: Cari siswa -> Pilih tagihan -> Bayar -> Struk.
+
+14.2 Pembayaran online orang tua
+Flow:
+1. Orang tua pilih anak.
+2. Pilih tagihan.
+3. Klik bayar.
+4. Pilih metode: VA/QRIS/e-wallet/payment gateway.
+5. Tampilkan instruksi pembayaran.
+6. Polling status atau tunggu callback.
+7. Jika berhasil, tampilkan bukti bayar.
+
+Pseudocode:
+
+FUNCTION ParentPayPage():
+    selectedInvoices = []
+    method = null
+
+    ON createPayment:
+        intent = api.post('/payments/intents', {
+            invoice_ids: selectedInvoices,
+            method
+        }, idempotent=true)
+
+        showPaymentInstruction(intent)
+        startPaymentStatusPolling(intent.id)
+
+    POLLING every 5 seconds:
+        status = api.get('/payments/intents/' + intent.id)
+        IF status == 'paid':
+            stopPolling()
+            showReceipt()
+
+14.3 Bukti pembayaran
+Bukti pembayaran harus bisa:
+- Ditampilkan di layar.
+- Diunduh PDF.
+- Dicetak.
+- Dikirim WhatsApp/email jika diizinkan.
+
+Isi struk:
+- Nama yayasan/unit.
+- Nomor pembayaran.
+- Tanggal/jam.
+- Nama siswa.
+- Kelas.
+- Rincian invoice/item.
+- Metode bayar.
+- Nominal.
+- Petugas.
+- QR verifikasi jika ada.
+
+14.4 Void/refund UI
+Aksi ini sensitif.
+Flow:
+1. User klik void/refund.
+2. Tampilkan detail transaksi.
+3. Wajib isi alasan.
+4. Jika nominal besar, minta approval.
+5. Minta re-auth.
+6. Kirim request.
+7. Tampilkan status.
+
+=====================================================================
+15. MODUL TABUNGAN DAN DOMPET
+=====================================================================
+
+15.1 Halaman saldo
+Tampilkan:
+- Pemilik akun.
+- Nomor akun.
+- Saldo saat ini.
+- Status akun.
+- Limit harian/per transaksi.
+- Riwayat mutasi.
+
+15.2 Top-up
+Flow:
+1. Pilih/scan siswa.
+2. Tampilkan nama dan saldo.
+3. Input nominal.
+4. Pilih metode: tunai/transfer/kasir.
+5. Cek limit role.
+6. Konfirmasi.
+7. Proses.
+8. Cetak struk.
+
+15.3 Tarik saldo
+Flow:
+1. Pilih akun.
+2. Input nominal.
+3. Cek saldo dan limit.
+4. Jika butuh approval, submit request.
+5. Setelah approved, proses pencairan.
+
+15.4 Mutasi saldo
+Desktop:
+- Tabel ledger.
+- Filter tanggal, tipe transaksi, sumber.
+
+Mobile:
+- List kartu mutasi.
+- Nominal debit/credit jelas.
+
+15.5 Jangan tampilkan saldo stale
+Setelah transaksi, UI harus refresh saldo dari server.
+Jangan hanya mengurangi saldo di frontend tanpa konfirmasi server.
+
+=====================================================================
+16. MODUL RFID DAN KARTU
+=====================================================================
+
+16.1 RFID di web
+Dukungan mode:
+- HID keyboard reader.
+- Web Serial untuk reader/writer tertentu.
+- Local bridge jika dipakai.
+
+UI status reader:
+- Reader aktif.
+- Reader belum terhubung.
+- Browser tidak mendukung Web Serial.
+- Menunggu scan kartu.
+- Kartu tidak dikenal.
+- Kartu diblokir.
+
+16.2 Komponen RFIDManager
+Tugas:
+- Mendeteksi mode scan.
+- Menjaga input scan tetap fokus.
+- Mencegah double scan.
+- Normalisasi UID.
+- Mengirim scan ke backend.
+- Menampilkan status reader.
+
+Pseudocode React:
+
+FUNCTION useRfidScanner(context):
+    buffer = ''
+    lastScan = null
+
+    ON keydown(event):
+        IF context not active:
+            RETURN
+
+        IF event.key == 'Enter':
+            uid = normalize(buffer)
+            buffer = ''
+
+            IF uid is valid AND not duplicate(uid):
+                sendScan(uid)
+        ELSE:
+            buffer += event.key
+
+    FUNCTION sendScan(uid):
+        api.post('/rfid/scan', {
+            raw_uid: uid,
+            context,
+            terminal_id
+        })
+
+16.3 Manajemen kartu
+Fitur UI:
+- Daftar kartu.
+- Filter status.
+- Cari siswa/kartu.
+- Issue kartu.
+- Blokir kartu.
+- Ganti kartu.
+- Riwayat kartu.
+
+16.4 Issue kartu
+Flow:
+1. Admin pilih siswa.
+2. Klik Terbitkan Kartu.
+3. Scan kartu kosong.
+4. Sistem cek apakah UID sudah terdaftar.
+5. Tampilkan ringkasan.
+6. Konfirmasi.
+7. Kartu aktif.
+
+16.5 Kartu hilang
+Flow orang tua:
+1. Buka menu Kartu Anak.
+2. Klik Laporkan Hilang.
+3. Konfirmasi bahaya.
+4. Kartu langsung diblokir atau menunggu verifikasi sesuai kebijakan.
+
+Flow admin:
+1. Cari siswa/kartu.
+2. Klik Blokir.
+3. Isi alasan.
+4. Konfirmasi.
+5. Status kartu blocked/lost.
+
+16.6 Anti double scan
+Jika UID sama discan dalam 2 detik, abaikan.
+Tetapi jika transaksi belum selesai, jangan proses scan baru.
+
+Pseudocode:
+
+FUNCTION isDuplicate(uid):
+    now = currentTime()
+    IF lastScan.uid == uid AND now - lastScan.time < 2000:
+        RETURN true
+    lastScan = { uid, time: now }
+    RETURN false
+
+=====================================================================
+17. MODUL POS KANTIN
+=====================================================================
+
+17.1 Desain POS desktop
+Layout:
+- Kiri: kategori produk.
+- Tengah: grid produk.
+- Kanan: keranjang, siswa, saldo, checkout.
+
+Produk:
+- Tombol besar.
+- Nama produk.
+- Harga.
+- Stok jika ada.
+
+Keranjang:
+- Item.
+- Qty.
+- Subtotal.
+- Total.
+- Metode bayar.
+- Tombol Bayar.
+
+17.2 Desain POS tablet/HP
+Layout:
+- Header: status shift dan reader.
+- Search produk.
+- Grid produk 2 kolom.
+- Keranjang sebagai bottom sheet.
+- Tombol checkout fixed bottom.
+
+17.3 Flow bayar RFID kantin
+1. Petugas pilih produk.
+2. Siswa tap kartu.
+3. Sistem tampilkan siswa dan saldo.
+4. Cek limit.
+5. Klik Bayar.
+6. Konfirmasi ringkas.
+7. Proses.
+8. Tampilkan berhasil.
+9. Cetak struk opsional.
+
+17.4 Mode cepat
+Untuk jam istirahat:
+- Setelah pembayaran berhasil, keranjang otomatis kosong.
+- Fokus kembali ke scan.
+- Popup sukses hanya 1 detik.
+- Tidak perlu banyak klik.
+- Tetapi transaksi tetap harus diproses server.
+
+17.5 Stok produk
+UI harus memberi tanda:
+- Stok habis: produk disabled.
+- Stok rendah: badge warning.
+- Tidak tracking stok: tidak tampilkan stok.
+
+17.6 Closing kantin
+Flow:
+1. Petugas klik Tutup Shift.
+2. Sistem tampilkan total sistem.
+3. Petugas input uang fisik.
+4. Sistem hitung selisih.
+5. Jika selisih, wajib isi alasan.
+6. Submit closing.
+7. Cetak laporan shift.
+
+=====================================================================
+18. MODUL KASIR SEKOLAH
+=====================================================================
+
+18.1 Buka shift
+UI:
+- Input kas awal.
+- Pilih lokasi kasir.
+- Konfirmasi buka shift.
+
+Jika belum buka shift:
+- Tombol transaksi disabled.
+- Tampilkan pesan: Silakan buka shift terlebih dahulu.
+
+18.2 Pencarian siswa
+Harus mendukung:
+- Nama.
+- NIS/NISN.
+- Kelas.
+- Scan RFID/barcode.
+
+Hasil pencarian:
+- Nama.
+- Kelas.
+- Tagihan belum lunas.
+- Saldo/dompet jika boleh dilihat.
+
+18.3 Pembayaran multi-invoice
+UI:
+- Checklist invoice.
+- Bisa bayar sebagian.
+- Total otomatis.
+- Metode bayar.
+
+18.4 Struk dan printer
+Frontend harus menyediakan:
+- Preview struk.
+- Print browser.
+- Template ukuran thermal 58mm/80mm.
+- Download PDF.
+
+CSS print:
+
+@media print:
+    body * { visibility: hidden; }
+    .receipt-print, .receipt-print * { visibility: visible; }
+    .receipt-print { position: absolute; left: 0; top: 0; width: 80mm; }
+
+=====================================================================
+19. MODUL KEUANGAN DAN JURNAL
+=====================================================================
+
+19.1 Jurnal
+UI jurnal harus rapi dan tidak membingungkan.
+
+Daftar jurnal:
+- Filter tanggal.
+- Filter unit.
+- Filter status.
+- Filter sumber modul.
+- Search nomor jurnal.
+
+Detail jurnal:
+- Header jurnal.
+- Daftar line debit/kredit.
+- Total debit.
+- Total kredit.
+- Status balanced/unbalanced.
+- Lampiran.
+- Audit trail.
+
+Form jurnal manual:
+- Minimal 2 baris.
+- Account selector searchable.
+- Debit/kredit hanya salah satu per baris.
+- Total debit dan kredit realtime.
+- Tidak bisa submit jika tidak balance.
+
+Pseudocode:
+
+FUNCTION validateJournal(lines):
+    totalDebit = sum(lines.debit)
+    totalCredit = sum(lines.credit)
+
+    IF totalDebit != totalCredit:
+        RETURN 'Debit dan kredit belum seimbang'
+
+    IF lines.length < 2:
+        RETURN 'Minimal 2 baris jurnal'
+
+    RETURN valid
+
+19.2 Posting jurnal
+Flow:
+1. User lihat detail jurnal.
+2. Klik Posting.
+3. Sistem tampilkan konfirmasi.
+4. Jika periode locked, backend menolak.
+5. Jika berhasil, status Posted.
+
+19.3 Kas/bank
+UI:
+- Daftar akun kas/bank.
+- Saldo per akun.
+- Mutasi.
+- Rekonsiliasi.
+
+19.4 Rekonsiliasi bank
+Flow:
+1. Upload CSV mutasi bank.
+2. Mapping kolom.
+3. Preview data.
+4. Auto match.
+5. Manual match untuk sisa.
+6. Submit rekonsiliasi.
+
+Mobile untuk rekonsiliasi hanya view ringan; pekerjaan detail sebaiknya desktop.
+
+=====================================================================
+20. MODUL LAPORAN
+=====================================================================
+
+20.1 Prinsip laporan
+Laporan harus:
+- Bisa difilter.
+- Bisa diexport.
+- Bisa drill-down.
+- Bisa dicetak.
+- Bisa dilihat mobile secara ringkas.
+
+20.2 Layout laporan desktop
+- Kiri/atas: filter.
+- Tengah: tabel/grafik.
+- Kanan: ringkasan jika perlu.
+
+20.3 Layout laporan mobile
+- Filter dalam bottom sheet.
+- Ringkasan kartu di atas.
+- Tabel besar diganti list atau horizontal scroll.
+- Export tetap tersedia.
+
+20.4 Filter laporan umum
+- Unit.
+- Periode tanggal.
+- Tahun ajaran.
+- Kelas.
+- Jenis tagihan.
+- Status.
+- Metode bayar.
+- Akun kas/bank.
+
+20.5 Laporan wajib frontend
+- Penerimaan harian.
+- Pengeluaran harian.
+- Kas/bank.
+- Tunggakan siswa.
+- Piutang siswa.
+- Tabungan/dompet.
+- Kantin.
+- Inventaris.
+- Aset.
+- RAB vs realisasi.
+- Buku besar.
+- Neraca saldo.
+- Neraca.
+- Arus kas.
+- Laporan aktivitas/laba-rugi internal.
+- Audit log.
+
+20.6 Export
+Tombol export:
+- PDF.
+- Excel.
+- CSV untuk data mentah jika diizinkan.
+
+UI harus menampilkan status export:
+- Sedang membuat file.
+- File siap diunduh.
+- Gagal membuat file.
+
+=====================================================================
+21. MODUL RAB DAN APPROVAL
+=====================================================================
+
+21.1 RAB
+UI RAB:
+- Daftar RAB.
+- Status RAB.
+- Detail item anggaran.
+- Realisasi otomatis.
+- Sisa anggaran.
+- Riwayat revisi.
+
+Form RAB:
+- Pilih unit.
+- Pilih periode.
+- Tambah item berdasarkan COA/kategori.
+- Input nominal.
+- Lampiran proposal.
+- Submit approval.
+
+21.2 Approval center
+Satu halaman untuk semua approval:
+- Pengeluaran.
+- RAB.
+- Refund.
+- Void.
+- Keringanan tagihan.
+- Jurnal manual.
+- Reopen periode.
+
+UI approval:
+- Kartu permintaan.
+- Prioritas dan nominal.
+- Pemohon.
+- Tanggal.
+- Tombol Approve/Reject.
+- Komentar wajib untuk reject.
+
+21.3 Approval mobile
+Kepala sekolah harus mudah approve dari HP:
+- Ringkasan jelas.
+- Lampiran bisa dibuka.
+- Tombol besar Setujui dan Tolak.
+- Konfirmasi sebelum submit.
+
+=====================================================================
+22. MODUL INVENTARIS DAN ASET
+=====================================================================
+
+22.1 Inventaris
+UI:
+- Daftar barang.
+- Stok tersedia.
+- Stok minimum.
+- Mutasi masuk/keluar.
+- Permintaan barang.
+- Stock opname.
+
+Mobile:
+- Cocok untuk opname.
+- Scan barcode/QR jika tersedia.
+- Input jumlah fisik cepat.
+
+22.2 Aset tetap
+UI:
+- Register aset.
+- Detail aset.
+- Foto aset.
+- Lokasi.
+- Penanggung jawab.
+- Riwayat mutasi.
+- Perawatan.
+- Penyusutan.
+
+22.3 Scan QR aset
+Flow:
+1. Petugas buka scan aset.
+2. Kamera membaca QR.
+3. Sistem buka detail aset.
+4. Petugas update lokasi/kondisi jika punya izin.
+
+Catatan WebView:
+- Kamera harus meminta izin secara jelas.
+- Jika WebView tidak diberi izin kamera, sediakan input manual kode aset.
+
+=====================================================================
+23. NOTIFIKASI
+=====================================================================
+
+23.1 Notification center
+Semua role punya pusat notifikasi:
+- Tagihan baru.
+- Pembayaran berhasil.
+- Approval menunggu.
+- Kartu diblokir.
+- Saldo rendah.
+- Limit jajan tercapai.
+- Stok rendah.
+- Rekonsiliasi perlu tindakan.
+
+23.2 UI notifikasi
+- Badge jumlah belum dibaca.
+- List notifikasi.
+- Klik membuka halaman terkait.
+- Mark as read.
+
+23.3 Push notification
+Untuk Android WebView/PWA, push notification bisa dibuat bertahap.
+Jika belum siap, gunakan notifikasi in-app dan WhatsApp/email.
+
+=====================================================================
+24. ANDROID WEBVIEW SPECIFIC GUIDELINES
+=====================================================================
+
+24.1 Jangan bergantung pada fitur browser penuh
+Di WebView:
+- Tidak ada address bar.
+- Back button perangkat harus ditangani.
+- Download perlu handler Android.
+- Permission harus hati-hati.
+- Popup eksternal harus dibuka di browser luar.
+
+24.2 Frontend harus mendukung environment detection
+
+FUNCTION detectEnvironment():
+    ua = navigator.userAgent
+
+    IF ua contains 'wv' OR window.AndroidBridge exists:
+        RETURN 'android_webview'
+
+    IF screen width < 768:
+        RETURN 'mobile_web'
+
+    RETURN 'desktop_web'
+
+24.3 Safe area
+Gunakan padding safe area untuk device modern.
+
+.mobile-shell:
+    padding-bottom: calc(64px + env(safe-area-inset-bottom));
+
+.bottom-nav:
+    padding-bottom: env(safe-area-inset-bottom);
+
+24.4 Tombol kembali
+Frontend route harus mendukung back.
+
+Pseudocode:
+
+FUNCTION handleBack():
+    IF modalOpen:
+        closeModal()
+    ELSE IF canNavigateBack:
+        navigateBack()
+    ELSE:
+        showExitConfirm()
+
+24.5 Download di WebView
+Frontend harus:
+- Tampilkan tombol Download.
+- Setelah diklik, backend memberi file URL aman.
+- Jika WebView tidak bisa download langsung, tampilkan opsi buka di browser.
+
+24.6 File upload di WebView
+Untuk upload foto bukti/aset:
+- Gunakan input type=file.
+- Batasi tipe file.
+- Kompres gambar di frontend jika perlu.
+- Tampilkan preview.
+
+24.7 Jangan wajib pakai addJavascriptInterface
+Untuk keamanan, frontend jangan bergantung pada bridge Android kecuali benar-benar perlu.
+Jika perlu bridge, batasi hanya fungsi aman seperti:
+- getAppVersion
+- openExternalBrowser
+- downloadFile
+- shareText
+
+Jangan expose fungsi sensitif seperti:
+- getToken
+- setToken
+- executePayment
+- readDatabase
+
+=====================================================================
+25. SECURITY FRONTEND
+=====================================================================
+
+25.1 Prinsip utama
+Frontend tidak pernah dipercaya penuh.
+Semua validasi penting tetap di backend.
+Tetapi frontend harus mencegah kesalahan dan serangan umum.
+
+25.2 Token dan session
+Rekomendasi:
+- Gunakan cookie HttpOnly + Secure + SameSite untuk session.
+- Jangan simpan access token sensitif di localStorage.
+- CSRF protection jika menggunakan cookie.
+- Logout harus memanggil backend untuk invalidasi session.
+
+25.3 XSS prevention
+Aturan:
+- Jangan render HTML mentah dari database.
+- Hindari dangerouslySetInnerHTML.
+- Jika harus render HTML, sanitize terlebih dahulu.
+- Escape output user.
+- Validasi upload file.
+
+25.4 CSRF
+Jika pakai cookie session:
+- Backend menyediakan CSRF token.
+- Frontend mengirim X-CSRF-Token untuk POST/PUT/PATCH/DELETE.
+- SameSite cookie tetap aktif.
+
+25.5 Clickjacking
+Frontend tidak mengatur sendiri, tetapi harus cocok dengan header backend:
+- frame-ancestors 'none'
+Khusus WebView official app harus dipikirkan oleh backend/domain policy.
+
+25.6 Content Security Policy
+Frontend harus dibuat supaya bisa jalan dengan CSP ketat:
+- Hindari inline script.
+- Hindari eval.
+- Load asset dari domain sendiri.
+- Batasi connect-src ke API resmi.
+
+25.7 Input validation
+Validasi sisi frontend:
+- Email/phone format.
+- Nominal uang.
+- Tanggal.
+- File upload size/type.
+- Required field.
+
+Tetapi jangan menganggap validasi frontend cukup.
+
+25.8 File upload security UI
+Saat upload:
+- Tampilkan file name, size, type.
+- Batasi PDF/JPG/PNG sesuai kebutuhan.
+- Maksimal ukuran file.
+- Jangan preview file HTML/SVG mentah.
+
+25.9 Frontend logging
+Jangan log:
+- Password.
+- PIN.
+- OTP.
+- Token.
+- Raw UID RFID jika tidak perlu.
+- Data pribadi sensitif.
+
+Boleh log:
+- Error code.
+- Request ID.
+- Page name.
+- Module.
+- Waktu.
+
+25.10 Anti double submit
+Semua tombol transaksi harus:
+- Disabled saat loading.
+- Memakai idempotency key.
+- Tidak bisa diklik dua kali.
+
+Pseudocode:
+
+FUNCTION SubmitButton(onSubmit):
+    loading = false
+
+    ON click:
+        IF loading:
+            RETURN
+        loading = true
+        TRY:
+            await onSubmit()
+        FINALLY:
+            loading = false
+
+25.11 Data masking
+Untuk data sensitif:
+- Nomor HP tampil sebagian untuk role tertentu.
+- Email bisa dimasking.
+- Data pribadi siswa hanya untuk role berwenang.
+
+25.12 Screen lock untuk kasir
+Jika kasir idle:
+- Setelah beberapa menit, tampilkan lock screen.
+- Minta PIN/password untuk lanjut.
+- Jangan logout otomatis saat ada transaksi belum selesai tanpa warning.
+
+=====================================================================
+26. ACCESSIBILITY
+=====================================================================
+
+26.1 Minimal standar aksesibilitas
+- Semua tombol punya label jelas.
+- Kontras warna cukup.
+- Bisa navigasi dengan keyboard di desktop.
+- Form field punya label.
+- Error dibaca screen reader jika memungkinkan.
+- Fokus terlihat.
+- Ukuran klik minimal 44px di mobile.
+
+26.2 Bahasa sederhana
+Gunakan Bahasa Indonesia yang jelas.
+Contoh:
+- Simpan
+- Batalkan
+- Bayar sekarang
+- Lihat rincian
+- Cetak struk
+- Kirim pengingat
+- Blokir kartu
+
+26.3 Jangan hanya mengandalkan warna
+Status harus pakai teks + warna.
+Contoh:
+- Lunas (hijau)
+- Belum lunas (merah/oranye)
+- Menunggu approval (kuning)
+
+=====================================================================
+27. PERFORMANCE
+=====================================================================
+
+27.1 Target performa
+- First load cepat.
+- Interaksi POS kantin sangat cepat.
+- Dashboard tidak berat.
+- Tabel besar memakai pagination/virtualization.
+- Gambar dikompres.
+
+27.2 Code splitting
+Pisahkan bundle per modul:
+- Auth.
+- Dashboard.
+- POS Kantin.
+- Kasir.
+- Laporan.
+- Admin settings.
+
+Pseudocode:
+
+const CanteenPOSPage = lazy(() => import('./features/canteen/POSPage'))
+const ReportsPage = lazy(() => import('./features/reports/ReportsPage'))
+
+27.3 Pagination
+Jangan load ribuan data sekaligus.
+Semua tabel besar harus:
+- Server-side pagination.
+- Server-side filter.
+- Server-side search.
+- Server-side sorting.
+
+27.4 Optimasi POS
+Produk kantin boleh dicache singkat.
+Tetapi saat checkout tetap validasi stok dan harga di backend.
+
+27.5 Optimasi mobile
+- Hindari animasi berat.
+- Hindari chart terlalu rumit.
+- Gunakan skeleton ringan.
+- Hindari gambar besar.
+
+=====================================================================
+28. OFFLINE DAN KONEKSI BURUK
+=====================================================================
+
+28.1 Prinsip keuangan tidak boleh offline penuh
+Transaksi uang tidak boleh diproses hanya di frontend offline.
+Untuk keamanan:
+- Pembayaran.
+- Top-up.
+- Kantin wallet.
+- Refund.
+- Void.
+Harus online ke server.
+
+28.2 Jika koneksi putus
+UI harus:
+- Menampilkan banner: Koneksi terputus.
+- Menonaktifkan transaksi uang.
+- Tetap boleh melihat cache data non-sensitif jika ada.
+- Memberi tombol coba lagi.
+
+28.3 POS saat koneksi buruk
+Jika jaringan lambat:
+- Tombol checkout loading.
+- Jangan mengulang otomatis tanpa idempotency.
+- Jika status tidak jelas, tampilkan: Status transaksi belum pasti, cek riwayat sebelum mengulang.
+
+Pseudocode:
+
+IF checkout timeout:
+    showWarning('Status transaksi belum pasti')
+    provideButton('Cek status transaksi')
+    disableRepeatUntilChecked()
+
+=====================================================================
+29. PRINTING DAN DOKUMEN
+=====================================================================
+
+29.1 Cetak struk
+Template:
+- 58mm.
+- 80mm.
+- A4 untuk bukti resmi.
+
+Frontend harus punya komponen Receipt.
+
+29.2 Cetak laporan
+Untuk laporan besar:
+- Lebih baik backend generate PDF.
+- Frontend hanya preview dan download.
+
+29.3 Export Excel
+Untuk data besar:
+- Backend generate file.
+- Frontend menerima job_id.
+- Polling status export.
+- Download saat selesai.
+
+Pseudocode:
+
+FUNCTION exportReport(filters):
+    job = api.post('/reports/export', filters)
+    WHILE job not finished:
+        status = api.get('/exports/' + job.id)
+        IF status.finished:
+            showDownload(status.file_url)
+
+=====================================================================
+30. SEARCH, FILTER, DAN TABLE UX
+=====================================================================
+
+30.1 Search umum
+Search harus punya debounce 300 sampai 500 ms.
+Jangan request setiap ketikan tanpa debounce.
+
+30.2 Filter
+Filter harus bisa:
+- Dibuka/tutup.
+- Reset.
+- Tampilkan jumlah filter aktif.
+- Disimpan di URL query agar bisa dibagikan.
+
+Contoh URL:
+/reports/payments?unit=sd&start=2026-07-01&end=2026-07-31
+
+30.3 Tabel
+Tabel desktop wajib:
+- Sort kolom penting.
+- Pagination.
+- Column visibility jika data banyak.
+- Sticky header untuk laporan panjang.
+- Bulk selection jika relevan.
+
+30.4 Mobile card list
+Mobile harus:
+- Tampilkan info utama.
+- Aksi cepat.
+- Status badge.
+- Detail dibuka saat klik.
+
+=====================================================================
+31. REALTIME UPDATE
+=====================================================================
+
+31.1 Fitur yang cocok realtime
+- Status pembayaran online.
+- Notifikasi approval.
+- Status reader/terminal.
+- Dashboard kasir/kantin.
+- Export report selesai.
+
+31.2 Implementasi bertahap
+Tahap awal:
+- Polling ringan.
+
+Tahap lanjutan:
+- WebSocket atau Server-Sent Events.
+
+31.3 Pseudocode polling pembayaran
+
+FUNCTION usePaymentStatus(intentId):
+    every 5 seconds:
+        status = api.get('/payments/intents/' + intentId)
+        IF status in ['paid', 'failed', 'expired']:
+            stop polling
+            update UI
+
+=====================================================================
+32. MULTI-UNIT DAN MULTI-TAHUN AJARAN
+=====================================================================
+
+32.1 Unit selector
+Untuk role yayasan:
+- Tampilkan pilihan Semua Unit atau unit tertentu.
+
+Untuk role unit:
+- Unit otomatis, tidak perlu selector jika hanya satu unit.
+
+32.2 Tahun ajaran selector
+Beberapa modul wajib punya tahun ajaran:
+- Siswa.
+- Kelas.
+- Tagihan.
+- Laporan pendidikan.
+
+32.3 Simpan preferensi user
+Simpan preferensi non-sensitif:
+- Unit terakhir.
+- Tahun ajaran terakhir.
+- Tema.
+- Layout tabel.
+
+Boleh di localStorage karena tidak sensitif.
+Jangan simpan token/password/UID mentah.
+
+=====================================================================
+33. DESIGN UNTUK FITUR LENGKAP PER MODUL
+=====================================================================
+
+33.1 Modul Data Siswa
+Halaman:
+- Daftar siswa.
+- Detail siswa.
+- Tambah/edit siswa.
+- Import siswa.
+- Pindah kelas.
+- Status aktif/lulus/keluar.
+- Hubungkan wali/orang tua.
+- Riwayat tagihan/pembayaran/tabungan/kantin/kartu.
+
+Detail siswa desktop pakai tab:
+- Profil
+- Orang tua/wali
+- Tagihan
+- Pembayaran
+- Dompet/tabungan
+- Kantin
+- RFID/kartu
+- Dokumen
+- Audit
+
+Mobile pakai accordion atau segmented tabs.
+
+33.2 Modul Pegawai
+Halaman:
+- Daftar pegawai.
+- Detail pegawai.
+- Tabungan pegawai.
+- Riwayat transaksi.
+- Role user jika pegawai punya akun.
+
+33.3 Modul User dan Role
+Halaman:
+- Daftar user.
+- Detail user.
+- Reset password.
+- Assign role.
+- Batasi unit/kelas.
+- Lock/unlock akun.
+- MFA status.
+- Riwayat login.
+
+UI permission harus hati-hati:
+- Jangan beri checklist terlalu rumit untuk admin umum.
+- Buat template role.
+- Advanced permission untuk super admin.
+
+33.4 Modul Pengaturan
+Kelompokkan:
+- Profil yayasan.
+- Unit sekolah.
+- Tahun ajaran.
+- Kelas.
+- Jenis tagihan.
+- COA.
+- Payment gateway.
+- Terminal/device.
+- RFID.
+- Notifikasi.
+- Keamanan.
+- Backup/export.
+
+=====================================================================
+34. PSEUDOCODE UTAMA FRONTEND
+=====================================================================
+
+34.1 App start
+
+FUNCTION startApp():
+    loadConfig()
+    detectEnvironment()
+    initializeApiClient()
+    initializeQueryClient()
+    renderAppProviders()
+    checkSession()
+
+34.2 Check session
+
+FUNCTION checkSession():
+    TRY:
+        user = api.get('/auth/me')
+        setUser(user)
+        loadPermissions(user)
+    CATCH 401:
+        clearUser()
+        showLogin()
+
+34.3 Responsive layout selector
+
+FUNCTION AppLayout():
+    screen = useScreenSize()
+    user = useUser()
+    menu = buildMenu(user)
+
+    IF screen.width < 768:
+        RETURN MobileLayout(menu)
+    ELSE:
+        RETURN DesktopLayout(menu)
+
+34.4 Page authorization
+
+FUNCTION Page({ permission, children }):
+    user = useUser()
+
+    IF not can(user, permission):
+        RETURN ForbiddenPage
+
+    RETURN children
+
+34.5 Transaction submit
+
+FUNCTION submitTransaction(payload, endpoint):
+    idempotencyKey = generateUUID()
+
+    showConfirm(payload.summary)
+
+    IF user cancels:
+        RETURN
+
+    setLoading(true)
+
+    TRY:
+        response = api.post(endpoint, payload, {
+            idempotent: true,
+            idempotencyKey
+        })
+        showSuccess(response.message)
+        refreshRelatedData()
+    CATCH ValidationError as e:
+        showFormErrors(e)
+    CATCH NetworkError:
+        showUncertainStateWarning()
+    FINALLY:
+        setLoading(false)
+
+34.6 Global error boundary
+
+FUNCTION ErrorBoundary(error):
+    logClientError(error)
+    RETURN ErrorPage(
+        title='Terjadi kesalahan',
+        message='Halaman gagal dimuat. Silakan coba lagi.',
+        action='Muat ulang'
+    )
+
+=====================================================================
+35. UI COPYWRITING DAN BAHASA
+=====================================================================
+
+35.1 Gunakan bahasa yang jelas
+Contoh:
+- Bayar Sekarang
+- Simpan Perubahan
+- Kirim Pengingat
+- Cetak Struk
+- Blokir Kartu
+- Buka Shift
+- Tutup Shift
+- Lihat Rincian
+
+35.2 Hindari istilah teknis untuk non-admin
+Hindari untuk orang tua:
+- payment intent
+- ledger
+- settlement
+- object authorization
+
+Gunakan:
+- Instruksi pembayaran
+- Riwayat saldo
+- Status pembayaran
+
+35.3 Pesan sukses
+Contoh:
+- Pembayaran berhasil dicatat.
+- Top-up berhasil. Saldo terbaru Rp75.000.
+- Kartu berhasil diblokir.
+- Shift berhasil ditutup.
+
+35.4 Pesan gagal
+Contoh:
+- Saldo tidak cukup.
+- Kartu tidak aktif atau sudah diblokir.
+- Anda tidak punya izin untuk aksi ini.
+- Koneksi bermasalah. Cek status transaksi sebelum mencoba lagi.
+
+=====================================================================
+36. TESTING FRONTEND
+=====================================================================
+
+36.1 Unit test
+Test untuk:
+- Format uang.
+- Permission helper.
+- Form validation.
+- Date formatting.
+- Status mapping.
+
+36.2 Component test
+Test untuk:
+- MoneyInput.
+- DataTable.
+- InvoiceCard.
+- POS cart.
+- ConfirmDialog.
+- RFID status component.
+
+36.3 Integration test
+Test flow:
+- Login.
+- Generate tagihan.
+- Pembayaran kasir.
+- Top-up wallet.
+- POS kantin RFID.
+- Approval.
+- Export laporan.
+
+36.4 Responsive test
+Wajib cek ukuran:
+- 360x640 HP kecil.
+- 390x844 HP umum.
+- 768x1024 tablet.
+- 1366x768 laptop.
+- 1920x1080 desktop.
+
+36.5 WebView test
+Cek:
+- Login.
+- Navigasi back.
+- Download PDF.
+- Upload foto.
+- Payment flow.
+- Bottom navigation aman dari navbar Android.
+- Tidak ada layout kepotong.
+
+36.6 Security test frontend
+Cek:
+- Tidak ada token di localStorage.
+- Tidak ada data sensitif di console log.
+- Tidak bisa akses halaman tanpa login.
+- Tombol transaksi tidak double submit.
+- XSS tidak render HTML mentah.
+- User tanpa izin tidak melihat menu terlarang.
+
+=====================================================================
+37. DEPLOYMENT FRONTEND
+=====================================================================
+
+37.1 Build production
+- Minify JS/CSS.
+- Source map hanya untuk internal atau disimpan aman.
+- Environment variable tidak berisi secret.
+- API base URL dari config.
+
+37.2 Cache static asset
+- File JS/CSS build pakai hash.
+- Cache lama untuk asset hash.
+- index.html jangan dicache terlalu lama.
+
+37.3 Versioning
+Tampilkan versi aplikasi di menu profil/pengaturan:
+- Web version.
+- Build date.
+- API version.
+
+37.4 Update handling
+Jika versi baru tersedia:
+- Tampilkan notifikasi: Versi baru tersedia, muat ulang.
+- Jangan auto reload saat kasir sedang transaksi.
+
+=====================================================================
+38. ROADMAP IMPLEMENTASI FRONTEND
+=====================================================================
+
+38.1 Tahap 1 - Fondasi UI
+- Design system.
+- Auth login/logout.
+- Layout desktop/mobile.
+- Role-based menu.
+- API client.
+- Toast/modal/error handling.
+- Dashboard sederhana.
+
+38.2 Tahap 2 - Data master dan tagihan
+- Data siswa.
+- Data kelas.
+- Jenis tagihan.
+- Generate tagihan.
+- Daftar/detail invoice.
+
+38.3 Tahap 3 - Pembayaran dan kasir
+- Kasir sekolah.
+- Buka/tutup shift.
+- Pembayaran tunai/non-tunai.
+- Struk.
+- Riwayat pembayaran.
+
+38.4 Tahap 4 - Wallet/tabungan dan RFID
+- Wallet siswa.
+- Top-up.
+- Mutasi saldo.
+- Manajemen kartu RFID.
+- Scan RFID HID.
+- POS kantin RFID.
+
+38.5 Tahap 5 - Laporan dan approval
+- Laporan penerimaan.
+- Laporan tunggakan.
+- Approval center.
+- Export PDF/Excel.
+
+38.6 Tahap 6 - Keuangan lanjutan
+- Jurnal.
+- Buku besar.
+- Neraca.
+- RAB.
+- Rekonsiliasi bank.
+
+38.7 Tahap 7 - Inventaris, aset, audit lanjutan
+- Inventaris.
+- Aset tetap.
+- QR aset.
+- Audit trail lengkap.
+- Security dashboard.
+
+=====================================================================
+39. CHECKLIST SIAP PAKAI UNTUK DEVELOPER FRONTEND
+=====================================================================
+
+Checklist desain:
+[ ] Semua halaman punya versi desktop dan mobile.
+[ ] Sidebar desktop bekerja.
+[ ] Bottom navigation mobile bekerja.
+[ ] Tabel berubah menjadi kartu di HP.
+[ ] Tombol utama mudah dijangkau.
+[ ] Warna status konsisten.
+[ ] Error dan empty state jelas.
+[ ] Form uang memakai format Rupiah.
+[ ] Semua aksi uang punya konfirmasi.
+[ ] Semua loading state jelas.
+
+Checklist keamanan:
+[ ] Tidak simpan token di localStorage.
+[ ] Tidak render HTML mentah.
+[ ] Tidak log password/PIN/OTP/token.
+[ ] Tombol transaksi anti double click.
+[ ] Idempotency key untuk transaksi penting.
+[ ] Role menu berdasarkan permission.
+[ ] Halaman dilindungi route guard.
+[ ] Re-auth untuk aksi sensitif.
+[ ] Upload file dibatasi type dan size.
+[ ] Session expired ditangani.
+
+Checklist WebView:
+[ ] Layout tidak kepotong navbar/statusbar.
+[ ] Back button Android ditangani.
+[ ] Download PDF bekerja.
+[ ] Upload file/foto bekerja.
+[ ] Link eksternal tidak merusak WebView.
+[ ] Tidak butuh popup tab baru.
+[ ] Bottom nav aman dengan safe area.
+
+Checklist POS/RFID:
+[ ] Scan HID keyboard fokus otomatis.
+[ ] Anti double scan aktif.
+[ ] Reader status terlihat.
+[ ] Kartu unknown/blocked jelas.
+[ ] Checkout tidak bisa saat offline.
+[ ] Saldo refresh dari server setelah transaksi.
+[ ] Struk bisa dicetak.
+[ ] Closing shift tersedia.
+
+Checklist laporan:
+[ ] Filter lengkap.
+[ ] Export tersedia.
+[ ] Mobile view tetap terbaca.
+[ ] Drill-down tersedia untuk role berwenang.
+[ ] Data besar memakai pagination.
+
+=====================================================================
+40. CONTOH DESIGN TOKEN CSS
+=====================================================================
+
+:root {
+    --color-primary: #0f766e;
+    --color-primary-dark: #115e59;
+    --color-bg: #f8fafc;
+    --color-surface: #ffffff;
+    --color-border: #e2e8f0;
+    --color-text: #0f172a;
+    --color-muted: #64748b;
+    --color-success: #16a34a;
+    --color-warning: #f59e0b;
+    --color-danger: #dc2626;
+    --color-info: #2563eb;
+
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 16px;
+
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-6: 24px;
+    --space-8: 32px;
+
+    --font-body: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+body {
+    font-family: var(--font-body);
+    background: var(--color-bg);
+    color: var(--color-text);
+}
+
+.btn {
+    min-height: 44px;
+    border-radius: var(--radius-md);
+    padding: 0 var(--space-4);
+    font-weight: 600;
+}
+
+.card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: var(--space-4);
+}
+
+=====================================================================
+41. CONTOH KOMPONEN PENTING
+=====================================================================
+
+41.1 StatusBadge pseudocode
+
+FUNCTION StatusBadge(status):
+    map = {
+        'paid': { label: 'Lunas', color: 'success' },
+        'unpaid': { label: 'Belum Lunas', color: 'danger' },
+        'partial': { label: 'Sebagian', color: 'info' },
+        'pending': { label: 'Menunggu', color: 'warning' },
+        'blocked': { label: 'Diblokir', color: 'danger' },
+        'active': { label: 'Aktif', color: 'success' }
+    }
+
+    config = map[status] OR { label: status, color: 'muted' }
+    RETURN Badge(config.label, config.color)
+
+41.2 ResponsiveTable pseudocode
+
+FUNCTION ResponsiveDataView(data, columns, renderMobileCard):
+    isMobile = useMediaQuery('(max-width: 767px)')
+
+    IF isMobile:
+        RETURN MobileCardList(data, renderMobileCard)
+    ELSE:
+        RETURN DataTable(data, columns)
+
+41.3 ConfirmTransactionDialog pseudocode
+
+FUNCTION ConfirmTransactionDialog(summary):
+    SHOW:
+        title = 'Konfirmasi Transaksi'
+        details = summary
+        warning = 'Pastikan data sudah benar. Transaksi akan tercatat di sistem.'
+        buttons = ['Batalkan', 'Proses']
+
+41.4 AppShell pseudocode
+
+FUNCTION AppShell():
+    user = useUser()
+    menu = buildMenu(user)
+    isMobile = useIsMobile()
+
+    IF isMobile:
+        RETURN MobileShell(header, content, bottomNav(menu))
+    ELSE:
+        RETURN DesktopShell(topbar, sidebar(menu), content)
+
+=====================================================================
+42. HAL YANG TIDAK BOLEH DILAKUKAN FRONTEND
+=====================================================================
+
+Jangan:
+1. Menyimpan password, PIN, OTP, token, atau raw UID di localStorage.
+2. Menganggap saldo frontend sebagai sumber kebenaran.
+3. Memproses transaksi uang saat offline.
+4. Mengizinkan double submit transaksi.
+5. Menampilkan semua menu hanya karena user login.
+6. Mengandalkan role frontend tanpa validasi backend.
+7. Render HTML mentah dari input user.
+8. Menampilkan error stack trace ke user.
+9. Membuat form terlalu panjang tanpa stepper/section.
+10. Membuat tabel besar yang tidak bisa dipakai di HP.
+11. Menggunakan popup browser untuk alur penting di WebView.
+12. Menyembunyikan status transaksi yang tidak pasti.
+13. Mengizinkan kasir transaksi tanpa shift aktif.
+14. Mengizinkan petugas kantin top-up jika tidak punya permission.
+15. Mengizinkan orang tua melihat data anak orang lain.
+
+=====================================================================
+43. RINGKASAN AKHIR
+=====================================================================
+
+Frontend sistem El Yaomy harus dibuat sebagai aplikasi React responsif dengan pendekatan mobile-first dan role-based UI.
+
+Aplikasi harus:
+- Mudah dipakai orang tua dan siswa dari HP.
+- Cepat dan stabil untuk kasir/kantin di desktop/tablet.
+- Lengkap untuk bendahara/admin di desktop.
+- Aman untuk transaksi uang, RFID, top-up, refund, dan approval.
+- Tetap nyaman di Android WebView.
+- Tidak bergantung pada penyimpanan data sensitif di browser.
+- Selalu menjadikan backend sebagai sumber kebenaran.
+
+Kunci sukses frontend:
+1. Layout adaptif desktop/mobile/WebView.
+2. Menu sesuai role dan permission.
+3. Komponen UI konsisten.
+4. Transaksi uang selalu konfirmasi, idempotent, dan refresh dari server.
+5. RFID hanya alat identifikasi, bukan penyimpan saldo.
+6. Form dan laporan dibuat sederhana tetapi lengkap.
+7. Error, loading, dan empty state harus jelas.
+8. Security frontend diterapkan sejak awal.
+9. Testing dilakukan di desktop, browser HP, dan Android WebView.
+10. Implementasi dilakukan bertahap agar sistem cepat digunakan dan tetap kuat.
+
