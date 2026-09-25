@@ -1,9 +1,12 @@
-# Secrets / environment
+# Secrets / environment (PUBLIC repo)
+# Keep real runtime secrets local; commit complete templates only.
 .env
 .env.*
-!.env.example
 backend/.env
 frontend/.env
+!.env.example
+!backend/.env.example
+!frontend/.env.example
 *.pem
 *.key
 *.token
